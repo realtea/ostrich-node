@@ -1,0 +1,10 @@
+[workspace]
+members = [
+"app",
+"trojan",
+"errors",
+"async-tls",
+"service",
+"command",
+
+]
