@@ -13,7 +13,7 @@ use service::register::handler::{ResponseBody, ResponseEntity, Role};
 use sqlx::pool::PoolConnection;
 use sqlx::Sqlite;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub const DNS_CACHE_TIMEOUT: u64 = 3 * 60;
 pub const DEFAULT_FALLBACK_ADDR: &str = "127.0.0.1::28780";
@@ -117,14 +117,14 @@ impl fmt::Display for LogLevel {
     }
 }
 
-pub fn log_init(level: u8) -> Result<()> {
+pub fn log_init(level: u8, log_path: &PathBuf) -> Result<()> {
     let log_level = LogLevel { level };
     std::env::set_var("RUST_LOG", log_level.to_string());
     env_logger::init();
     Logger::try_with_env()
         .unwrap()
         .format(detailed_format)
-        .log_to_file(FileSpec::default().use_timestamp(true).directory("./logs"))
+        .log_to_file(FileSpec::default().use_timestamp(true).directory(&log_path))
         .write_mode(WriteMode::BufferAndFlushWith(
             10 * 1024,
             std::time::Duration::from_millis(600),

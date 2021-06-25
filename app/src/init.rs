@@ -11,24 +11,27 @@ use clap::{App, Arg};
 use command::frame::Frame;
 use errors::{Error, Result};
 use log::{info, warn};
-use rustls::{NoClientAuth, ServerConfig};
 use serde_json::Value;
 use service::api::state::{Node, NodeAddress};
 use service::api::users::NODE_EXPIRE;
 use service::db::create_db;
 use service::db::model::EntityId;
 use service::{api::state::State, db, register::hyper::hyper_compat::serve_register};
+use std::fs;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::ops::Sub;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
-use std::{fs, io};
 use trojan::config::Config;
 use trojan::{load_certs, load_keys};
 
 pub async fn service_init(config: &Config) -> Result<()> {
-    log_init(config.log_level)?;
+    //init log
+    let exe_path = std::env::current_exe()?;
+    let log_path = exe_path.join(DEFAULT_LOG_PATH);
+    log_init(config.log_level, &log_path)?;
+
     let local: (&str, u16) = {
         let addr = config.local_addr.as_ref();
         let port = config.local_port;
@@ -41,7 +44,12 @@ pub async fn service_init(config: &Config) -> Result<()> {
     let remote_addr = config.remote_addr.clone();
     let remote_port = config.remote_port;
     // let remote: (&str, u16) = (remote_addr, remote_port);
-    let db_path = format!("sqlite:{}", config.mysql.as_ref().unwrap().server_addr);
+
+    //init db path
+    let db_path = config.mysql.as_ref().unwrap().server_addr.to_owned();
+    fs::create_dir_all(&db_path)?;
+    let db_path = format!("sqlite:{}/ostrich.db", db_path);
+
     let available_sites = vec![
         "https://api.ipify.org?format=json",
         "https://myexternalip.com/json",
@@ -111,7 +119,6 @@ pub async fn service_init(config: &Config) -> Result<()> {
     .unwrap();
     let register_db = db.clone();
 
-
     let host = config.local_addr.to_owned();
     let port = config.local_port;
     spawn(async move {
@@ -151,8 +158,6 @@ pub async fn service_init(config: &Config) -> Result<()> {
     });
 
     spawn(async move {
-        let exe_path = std::env::current_exe()?;
-        let log_path = exe_path.join(DEFAULT_LOG_PATH);
         fs::create_dir_all(&log_path)?;
         loop {
             async_std::task::sleep(Duration::from_secs(DEFAULT_LOG_CLEANUP_INTERVAL)).await;
