@@ -28,18 +28,12 @@ use trojan::{load_certs, load_keys};
 
 pub async fn service_init(config: &Config) -> Result<()> {
     //init log
-    let exe_path = std::env::current_exe()?;
+    // let exe_path = std::env::current_exe()?;
+    let exe_path = std::env::current_dir()?;
     let log_path = exe_path.join(DEFAULT_LOG_PATH);
+    fs::create_dir_all(&log_path)?;
+
     log_init(config.log_level, &log_path)?;
-
-    let local: (&str, u16) = {
-        let addr = config.local_addr.as_ref();
-        let port = config.local_port;
-        (addr, port)
-    };
-
-    let addr = IpAddr::from_str(config.local_addr.as_ref()).unwrap();
-    let local_addr = SocketAddr::new(addr, local.1);
 
     let remote_addr = config.remote_addr.clone();
     let remote_port = config.remote_port;
@@ -61,7 +55,7 @@ pub async fn service_init(config: &Config) -> Result<()> {
             Ok(mut resp) => {
                 info!("reporting internal {}", resp.status());
 
-                let body: Value = resp.body_json().await.unwrap();
+                let body: Value = resp.body_json().await.map_err(|e|Error::Eor(anyhow::anyhow!("{}",e)))?;
                 public_ip = body["ip"].as_str().unwrap().to_string();
                 break;
                 // return  Ok(ip)
@@ -94,14 +88,14 @@ pub async fn service_init(config: &Config) -> Result<()> {
     info!("remote_addr: {}", &remote_addr);
     // let mut tasks = Vec::new();
 
-    create_db(&db_path).await.unwrap();
+    create_db(&db_path).await?;
     info!("after create db");
     let db = db::sqlite::connect(&db_path)
         .await
         .map_err(|e| info!("db connection error: {:?}", e))
         .unwrap();
     info!("after connect db");
-    let mut migrate = db.clone().acquire().await.unwrap();
+    let mut migrate = db.clone().acquire().await?;
     info!("before migration");
     sqlx::query(
         r#"
@@ -115,8 +109,7 @@ pub async fn service_init(config: &Config) -> Result<()> {
                             "#,
     )
     .execute(&mut migrate)
-    .await
-    .unwrap();
+    .await?;
     let register_db = db.clone();
 
     let host = config.local_addr.to_owned();
@@ -138,8 +131,7 @@ pub async fn service_init(config: &Config) -> Result<()> {
             };
             info!("reporting node: {:?}", node);
             let body = serde_json::to_vec(&node)
-                .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))
-                .unwrap();
+                .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
             // Create a request.
             use async_std::prelude::FutureExt;
             match surf::post(&remote_addr)
@@ -155,16 +147,16 @@ pub async fn service_init(config: &Config) -> Result<()> {
                 }
             }
         }
-    });
-
-    spawn(async move {
-        fs::create_dir_all(&log_path)?;
-        loop {
-            async_std::task::sleep(Duration::from_secs(DEFAULT_LOG_CLEANUP_INTERVAL)).await;
-            log_cleanup(log_path.as_ref())?;
-        }
         Ok(()) as Result<()>
     });
+
+    // spawn(async move {
+    //     loop {
+    //         async_std::task::sleep(Duration::from_secs(DEFAULT_LOG_CLEANUP_INTERVAL)).await;
+    //         log_cleanup(log_path.as_ref())?;
+    //     }
+    //     Ok(()) as Result<()>
+    // });
     let state = Arc::new(State::new(register_db));
     let cleanup_state = state.clone();
     // let register_task =
@@ -185,27 +177,25 @@ pub async fn service_init(config: &Config) -> Result<()> {
                 continue;
             }
             for _i in 0..len {
-                let node = nodes.pop_front();
-                if node.is_none() {
-                    break;
-                }
-                let node = node.unwrap();
-                if now.sub(node.last_update) < NODE_EXPIRE {
-                    nodes.push_back(node);
+                if let Some(node) = nodes.pop_front(){
+                    if now.sub(node.last_update) < NODE_EXPIRE {
+                        nodes.push_back(node);
+                    }
                 }
             }
             drop(nodes);
         }
+        Ok(()) as Result<()>
     });
 
     spawn(async move {
-        let socket = UdpSocket::bind(DEFAULT_COMMAND_ADDR).await.unwrap();
+        let socket = UdpSocket::bind(DEFAULT_COMMAND_ADDR).await?;
         let mut buf = vec![0u8; 1024];
 
-        info!("Listening on {}", socket.local_addr().unwrap());
+        info!("Listening on {}", socket.local_addr()?);
 
         loop {
-            let (n, peer) = socket.recv_from(&mut buf).await.unwrap();
+            let (n, peer) = socket.recv_from(&mut buf).await?;
 
             let mut data = BytesMut::new();
             data.extend_from_slice(&buf[..n]);
@@ -213,22 +203,22 @@ pub async fn service_init(config: &Config) -> Result<()> {
             match Frame::get_frame_type(&data.as_ref()) {
                 Frame::CreateUserRequest => {
                     info!("CreateUserRequest");
-                    let cmd_db = db.acquire().await.unwrap();
+                    let cmd_db = db.acquire().await?;
 
-                    Frame::unpack_msg_frame(&mut data).unwrap();
+                    Frame::unpack_msg_frame(&mut data)?;
                     //
                     info!(
                         "{:?}",
                         String::from_utf8(data.to_ascii_lowercase().to_vec())
                     );
-                    let token = String::from_utf8(data.to_ascii_lowercase().to_vec()).unwrap();
+                    let token = String::from_utf8(data.to_ascii_lowercase().to_vec()).map_err(|e|Error::Eor(anyhow::anyhow!("{}",e)))?;
                     // cmd_db.create_user(token,1 as EntityId).await.unwrap();
 
                     let ret = create_cmd_user(cmd_db, token, 1 as EntityId).await;
                     let mut resp = BytesMut::new();
-                    build_cmd_response(ret, &mut resp).unwrap();
+                    build_cmd_response(ret, &mut resp)?;
 
-                    let sent = socket.send_to(resp.as_ref(), &peer).await.unwrap();
+                    let sent = socket.send_to(resp.as_ref(), &peer).await?;
                     info!("Sent {} out of {} bytes to {}", sent, n, peer);
                 }
                 Frame::CreateUserResponse => {}
@@ -240,3 +230,4 @@ pub async fn service_init(config: &Config) -> Result<()> {
 
     Ok(())
 }
+
