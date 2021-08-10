@@ -11,7 +11,7 @@ use sqlx::Sqlite;
 use std::default::Default;
 use std::ops::Sub;
 use std::sync::Arc;
-
+use hyper::body::Buf;
 use crate::register::handler::{ResponseEntity, ServerAddr, ServerNode};
 use errors::{Error, Result, ServiceError};
 
@@ -112,7 +112,7 @@ pub async fn update_available_server<T>(
 where
     T: Db<Conn = PoolConnection<Sqlite>>,
 {
-    let body = hyper::body::aggregate(req).await?;
+    let body = hyper::body::aggregate(req).await.unwrap();//TODO
     // Decode as JSON...
     let body: Node =
         serde_json::from_reader(body.reader()).map_err(|_| ServiceError::InvalidParams)?;
@@ -181,7 +181,7 @@ where
         let node = node.unwrap();
         if now.sub(node.last_update) < NODE_EXPIRE {
             // Aggregate the body...
-            let whole_body = hyper::body::aggregate(req).await?;
+            let whole_body = hyper::body::aggregate(req).await.unwrap();//TODO
             // Decode as JSON...
             let body: RequestBody = serde_json::from_reader(whole_body.reader())
                 .map_err(|_| ServiceError::InvalidParams)?;
@@ -230,7 +230,7 @@ where
         user: NewUser,
     }
     // Aggregate the body...
-    let whole_body = hyper::body::aggregate(req).await?;
+    let whole_body = hyper::body::aggregate(req).await.unwrap();//TODO
     // Decode as JSON...
     let body: RequestBody =
         serde_json::from_reader(whole_body.reader()).map_err(|_| ServiceError::InvalidParams)?;

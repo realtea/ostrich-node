@@ -31,8 +31,8 @@ pub enum Error {
     #[error("Resolver errors")]
     Resolver(#[from] trust_dns_resolver::error::ResolveError),
 
-    #[error("IO errors")]
-    GlommioError(#[from] GlommioError<()>),
+    // #[error("IO errors")]
+    // GlommioError(#[from] GlommioError<()>),
     #[error("Sql errors")]
     SqlError(#[from] sqlx::Error),
 

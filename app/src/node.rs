@@ -1,15 +1,16 @@
-use app::init::service_init;
+// use app::init::service_init;
 use app::DEFAULT_FALLBACK_ADDR;
 use async_std::task::block_on;
 use async_std::task::spawn;
 use async_tls::TlsAcceptor;
 use clap::{App, Arg};
-use errors::Result;
+use errors::{Result,Error};
 use rustls::{NoClientAuth, ServerConfig};
 use std::io;
 use std::sync::Arc;
 use trojan::config::set_config;
 use trojan::{generate_authenticator, load_certs, load_keys, ProxyBuilder};
+use glommio::{LocalExecutorPoolBuilder, Placement, CpuSet, Local, LocalExecutorBuilder};
 
 fn main() -> Result<()> {
     let matches = App::new("ostrich")
@@ -51,20 +52,43 @@ fn main() -> Result<()> {
         Ok(()) as Result<()>
     };
     let proxy_addr = format!("{}:{}", "0.0.0.0", config.local_port);
-    block_on(async {
-        // just for test
-        spawn(test_fut);
+    // block_on(async {
+    //     // just for test
+    //     spawn(test_fut);
+    //
+    //     service_init(&config).await?;
+    //
+    //     let proxy = ProxyBuilder::new(
+    //         proxy_addr,
+    //         tls_acceptor,
+    //         authenticator,
+    //         DEFAULT_FALLBACK_ADDR.to_string(),
+    //     );
+    //     proxy.start().await?;
+    //     Ok(()) as Result<()>
+    // })?;
+    // let ex = LocalExecutorBuilder::new().make()?;
+    //
+    // ex.run(async move {
+    //     service_init(&config).await?;
+    //     Ok(()) as Result<()>
+    // });
 
-        service_init(&config).await?;
-
-        let proxy = ProxyBuilder::new(
-            proxy_addr,
-            tls_acceptor,
-            authenticator,
-            DEFAULT_FALLBACK_ADDR.to_string(),
-        );
-        proxy.start().await?;
-        Ok(()) as Result<()>
-    })?;
+    let proxy = ProxyBuilder::new(
+        proxy_addr,
+        tls_acceptor,
+        authenticator,
+        DEFAULT_FALLBACK_ADDR.to_string(),
+    );
+    LocalExecutorPoolBuilder::new(num_cpus::get())
+        .placement(Placement::MaxSpread(CpuSet::online().ok()))
+        .on_all_shards(|| async move {
+            let id = Local::id();
+            println!("Starting executor {}", id);
+            proxy.start().await?;
+            Ok(()) as Result<()>
+        })
+        .unwrap()
+        .join_all();
     Ok(())
 }

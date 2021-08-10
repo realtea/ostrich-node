@@ -1,6 +1,6 @@
 use crate::copy::copy;
 use crate::Address;
-use async_std::net::{TcpListener, TcpStream, UdpSocket};
+// use async_std::net::{TcpListener, TcpStream, UdpSocket};
 use async_std::task::spawn;
 use async_tls::server::TlsStream;
 use async_tls::TlsAcceptor;
@@ -18,6 +18,14 @@ use log::info;
 use std::net::{Ipv6Addr, SocketAddr, SocketAddrV6};
 use std::sync::Arc;
 
+use glommio::{
+    enclose,
+    net::{TcpListener, TcpStream,UdpSocket},
+    sync::Semaphore,
+    Local,
+    Task,
+};
+#[derive(Clone)]
 pub struct ProxyBuilder {
     addr: String,
     acceptor: TlsAcceptor,
@@ -41,27 +49,37 @@ impl ProxyBuilder {
     }
 
     pub async fn start(self) -> Result<()> {
-        let listener = TcpListener::bind(&self.addr).await?;
+        let listener = TcpListener::bind(&self.addr).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
         info!("proxy started at: {}", self.addr);
         let mut incoming = listener.incoming();
-        let shared_authenticator = Arc::new(self.authenticator);
 
         while let Some(Ok(incoming_stream)) = incoming.next().await {
             debug!("server: got connection from client");
-            let acceptor = self.acceptor.clone();
-            spawn(process_stream(
-                acceptor,
-                incoming_stream,
-                shared_authenticator.clone(),
-                self.fallback.clone(),
-            ));
+            // spawn(process_stream(
+            //     acceptor,
+            //     incoming_stream,
+            //     shared_authenticator.clone(),
+            //     self.fallback.clone(),
+            // ));
+            let shared_authenticator = Arc::new(self.authenticator.clone());
+            let acceptor = Arc::new(self.acceptor.clone());
+            let fallback = self.fallback.clone();
+            Local::local( async move {
+                process_stream(
+                    acceptor.clone(),
+                    incoming_stream,
+                    shared_authenticator.clone(),
+                    fallback.clone()
+                );
+                    }).detach();
+
         }
         Ok(())
     }
 }
 /// start TLS stream at addr to target
 async fn process_stream(
-    acceptor: TlsAcceptor,
+    acceptor: Arc<TlsAcceptor>,
     raw_stream: TcpStream,
     authenticator: Arc<Vec<String>>,
     fallback: String,
@@ -172,7 +190,7 @@ async fn redirect_fallback(
     tls_stream: TlsStream<TcpStream>,
     buf: &[u8],
 ) -> Result<()> {
-    let mut tcp_stream = TcpStream::connect(target).await?;
+    let mut tcp_stream = TcpStream::connect(target).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
 
     debug!("connect to fallback: {}", target);
     tcp_stream.write_all(buf).await?;
@@ -269,7 +287,7 @@ async fn proxy(
         CMD_TCP_CONNECT => {
             debug!("TcpConnect target addr: {:?}", addr);
 
-            let tcp_stream = TcpStream::connect(addr.to_string()).await?;
+            let tcp_stream = TcpStream::connect(addr.to_string()).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
 
             debug!("connect to target: {} from source: {}", addr, source);
 
@@ -336,8 +354,7 @@ async fn proxy(
                 0,
                 0,
                 0,
-            )))
-            .await?;
+            ))).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
             let (mut tls_stream_reader, mut tls_stream_writer) = tls_stream.split();
 
             let client_to_server = Box::pin(async {
@@ -374,7 +391,7 @@ async fn proxy(
             let server_to_client = Box::pin(async {
                 let mut buf = [0u8; RELAY_BUFFER_SIZE];
                 loop {
-                    let (len, dst) = outbound.recv_from(&mut buf).await?;
+                    let (len, dst) = outbound.recv_from(&mut buf).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
                     if len == 0 {
                         break;
                     }
