@@ -8,26 +8,27 @@ pub mod hyper_compat {
     };
 
     use glommio::{
-        enclose,
+        // enclose,
         net::{TcpListener, TcpStream},
-        sync::Semaphore,
+        // sync::Semaphore,
         Local,
         Task,
     };
     use hyper::{server::conn::Http, Body, Request, Response};
-    use std::{io, rc::Rc};
+    use std::{io};
     use tokio::io::ReadBuf;
     use std::sync::Arc;
     use crate::api::state::State;
     use crate::db::Db;
     use sqlx::pool::PoolConnection;
     use sqlx::Sqlite;
-    use crate::register::handler::serve;
+    // use crate::register::handler::serve;
     use log::error;
     use futures_lite::StreamExt;
+    // use errors::Result;
     pub async fn serve_register<A, T,S,F,R>(
         addr: A,
-        service: S,
+        mut service: S,
         // max_connections: usize,
         state: Arc<State<T>>,
     ) -> io::Result<()>
@@ -55,7 +56,7 @@ pub mod hyper_compat {
                     .with_executor(HyperExecutor)
                     .serve_connection(
                         HyperStream(stream),
-                        service_fn(|req| serve(req, state.clone())),
+                        service_fn(|req| service(req, state.clone())),
                     )
                     .await
                 {

@@ -6,14 +6,13 @@ pub mod init;
 use bytes::BytesMut;
 use command::frame::Frame;
 use errors::{Error, Result, ServiceError};
-use flexi_logger::{detailed_format, Age, Cleanup, Criterion, FileSpec, Logger, Naming, WriteMode};
 use service::api::users::{User, USER_TOKEN_MAX_LEN};
 use service::db::model::{EntityId, ProvideAuthn};
 use service::register::handler::{ResponseBody, ResponseEntity, Role};
 use sqlx::pool::PoolConnection;
 use sqlx::Sqlite;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::{Path,PathBuf};
 
 pub const DNS_CACHE_TIMEOUT: u64 = 3 * 60;
 pub const DEFAULT_FALLBACK_ADDR: &str = "127.0.0.1::28780";
@@ -165,7 +164,7 @@ pub fn log_cleanup(dir: &Path) -> Result<()> {
             files
                 .iter()
                 .filter(|(k, _v)| **k != latest)
-                .map(|(k, v)| {
+                .map(|(_k, v)| {
                     std::fs::remove_file(v)
                         .map_err(|e| error!("remove file: {:?}, error: {:?}", v.display(), e));
                 })

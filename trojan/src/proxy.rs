@@ -1,7 +1,7 @@
 use crate::copy::copy;
 use crate::Address;
 // use async_std::net::{TcpListener, TcpStream, UdpSocket};
-use async_std::task::spawn;
+// use async_std::task::spawn;
 use async_tls::server::TlsStream;
 use async_tls::TlsAcceptor;
 use bytes::BufMut;
@@ -19,11 +19,11 @@ use std::net::{Ipv6Addr, SocketAddr, SocketAddrV6};
 use std::sync::Arc;
 
 use glommio::{
-    enclose,
+    // enclose,
     net::{TcpListener, TcpStream,UdpSocket},
-    sync::Semaphore,
+    // sync::Semaphore,
     Local,
-    Task,
+    // Task,
 };
 #[derive(Clone)]
 pub struct ProxyBuilder {
@@ -65,12 +65,13 @@ impl ProxyBuilder {
             let acceptor = Arc::new(self.acceptor.clone());
             let fallback = self.fallback.clone();
             Local::local( async move {
+                debug!("new connection test");
                 process_stream(
                     acceptor.clone(),
                     incoming_stream,
                     shared_authenticator.clone(),
                     fallback.clone()
-                );
+                ).await
                     }).detach();
 
         }

@@ -1,8 +1,6 @@
 // #![feature(try_trait)]
 
 use thiserror::Error;
-// use trust_dns_resolver::errors::ResolveError;
-use glommio::GlommioError;
 use sqlx::sqlite::SqliteError;
 use std::io;
 

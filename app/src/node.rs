@@ -1,6 +1,6 @@
 // use app::init::service_init;
 use app::DEFAULT_FALLBACK_ADDR;
-use async_std::task::block_on;
+// use async_std::task::block_on;
 use async_std::task::spawn;
 use async_tls::TlsAcceptor;
 use clap::{App, Arg};
@@ -11,6 +11,7 @@ use std::sync::Arc;
 use trojan::config::set_config;
 use trojan::{generate_authenticator, load_certs, load_keys, ProxyBuilder};
 use glommio::{LocalExecutorPoolBuilder, Placement, CpuSet, Local, LocalExecutorBuilder};
+use app::init::service_init;
 
 fn main() -> Result<()> {
     let matches = App::new("ostrich")
@@ -44,13 +45,13 @@ fn main() -> Result<()> {
 
     let tls_acceptor = TlsAcceptor::from(Arc::new(tls_config));
 
-    // just for test
-    let test_fut = async {
-        let mut app = tide::new();
-        app.at("/").get(|_| async { Ok("Hello, world!") });
-        app.listen(DEFAULT_FALLBACK_ADDR).await?;
-        Ok(()) as Result<()>
-    };
+    // // just for test
+    // let test_fut = async {
+    //     let mut app = tide::new();
+    //     app.at("/").get(|_| async { Ok("Hello, world!") });
+    //     app.listen(DEFAULT_FALLBACK_ADDR).await?;
+    //     Ok(()) as Result<()>
+    // };
     let proxy_addr = format!("{}:{}", "0.0.0.0", config.local_port);
     // block_on(async {
     //     // just for test
@@ -67,13 +68,12 @@ fn main() -> Result<()> {
     //     proxy.start().await?;
     //     Ok(()) as Result<()>
     // })?;
-    // let ex = LocalExecutorBuilder::new().make()?;
-    //
-    // ex.run(async move {
-    //     service_init(&config).await?;
-    //     Ok(()) as Result<()>
-    // });
-
+    let ex = LocalExecutorBuilder::new().make().map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+    ex.run(async move {
+        service_init(&config).await?;
+        Ok(()) as Result<()>
+    });
+    env_logger::init();
     let proxy = ProxyBuilder::new(
         proxy_addr,
         tls_acceptor,
@@ -87,8 +87,7 @@ fn main() -> Result<()> {
             println!("Starting executor {}", id);
             proxy.start().await?;
             Ok(()) as Result<()>
-        })
-        .unwrap()
+        }).unwrap()
         .join_all();
     Ok(())
 }
