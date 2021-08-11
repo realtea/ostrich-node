@@ -94,7 +94,7 @@ pub mod hyper_compat {
                 .poll_read(cx, buf.initialize_unfilled())
                 .map(|n| {
                     if n.is_ok() {
-                        buf.advance(n.unwrap());
+                        buf.advance(n?);
                     }
                     Ok(())
                 })

@@ -112,7 +112,7 @@ pub async fn update_available_server<T>(
 where
     T: Db<Conn = PoolConnection<Sqlite>>,
 {
-    let body = hyper::body::aggregate(req).await.unwrap();//TODO
+    let body = hyper::body::aggregate(req).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;//TODO
     // Decode as JSON...
     let body: Node =
         serde_json::from_reader(body.reader()).map_err(|_| ServiceError::InvalidParams)?;
@@ -181,7 +181,7 @@ where
         let node = node.unwrap();
         if now.sub(node.last_update) < NODE_EXPIRE {
             // Aggregate the body...
-            let whole_body = hyper::body::aggregate(req).await.unwrap();//TODO
+            let whole_body = hyper::body::aggregate(req).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;//TODO
             // Decode as JSON...
             let body: RequestBody = serde_json::from_reader(whole_body.reader())
                 .map_err(|_| ServiceError::InvalidParams)?;
@@ -230,7 +230,7 @@ where
         user: NewUser,
     }
     // Aggregate the body...
-    let whole_body = hyper::body::aggregate(req).await.unwrap();//TODO
+    let whole_body = hyper::body::aggregate(req).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;//TODO
     // Decode as JSON...
     let body: RequestBody =
         serde_json::from_reader(whole_body.reader()).map_err(|_| ServiceError::InvalidParams)?;

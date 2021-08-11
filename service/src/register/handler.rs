@@ -82,8 +82,7 @@ where
             // Return 404 not found response.
             Ok(Response::builder()
                 .status(StatusCode::NOT_FOUND)
-                .body(NOTFOUND.into())
-                .unwrap())
+                .body(NOTFOUND.into())?)
         }
     }
     // Ok(Response::new(Body::from("Hello from hyper!")))

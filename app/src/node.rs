@@ -13,6 +13,7 @@ use trojan::{generate_authenticator, load_certs, load_keys, ProxyBuilder};
 use glommio::{LocalExecutorPoolBuilder, Placement, CpuSet, Local, LocalExecutorBuilder};
 use app::init::service_init;
 
+
 fn main() -> Result<()> {
     let matches = App::new("ostrich")
         .version("0.1.0")
@@ -73,7 +74,7 @@ fn main() -> Result<()> {
         service_init(&config).await?;
         Ok(()) as Result<()>
     });
-    env_logger::init();
+
     let proxy = ProxyBuilder::new(
         proxy_addr,
         tls_acceptor,

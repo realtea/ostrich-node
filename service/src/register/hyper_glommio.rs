@@ -88,7 +88,7 @@ pub mod hyper_compat {
             //     return Err(x.into());
             // }
             // Ok(stream) => {
-            let addr = stream.local_addr().unwrap();
+            let addr = stream.local_addr()?;
             let state = state.clone();
             Local::local(async move {
                 // let _permit = conn_control.acquire_permit(1).await;
