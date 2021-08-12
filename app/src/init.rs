@@ -3,8 +3,7 @@ use crate::{
     build_cmd_response, create_cmd_user, log_init, DEFAULT_COMMAND_ADDR,
      DEFAULT_LOG_PATH, DEFAULT_REGISTER_PORT,
 };
-use async_std::net::UdpSocket;
-// use async_std::task::spawn;
+
 // use async_tls::TlsAcceptor;
 use bytes::BytesMut;
 // use clap::{App, Arg};
@@ -28,6 +27,7 @@ use trojan::config::Config;
 use service::register::handler::serve;
 use glommio::Task;
 use glommio::timer::{sleep};
+use glommio::net::UdpSocket;
 
 pub async fn service_init(config: &Config) ->Result<()> {
     //init log
@@ -120,8 +120,8 @@ pub async fn service_init(config: &Config) ->Result<()> {
     let port = config.local_port;
     tasks.push(Task::<Result<()>>::local(async move {
         loop {
-            // async_std::task::sleep(Duration::from_secs(3 * 60)).await;
-            sleep(Duration::from_millis(3 * 60)).await;
+
+            sleep(Duration::from_secs(3 * 60)).await;
 
             //TODO &
             let addr = NodeAddress {
@@ -139,10 +139,10 @@ pub async fn service_init(config: &Config) ->Result<()> {
             let body = serde_json::to_vec(&node)
                 .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
             // Create a request.
-            use async_std::prelude::FutureExt;
+
             match surf::post(&remote_addr)
                 .body(body)
-                .timeout(Duration::from_secs(60))
+                // .timeout(Duration::from_secs(60))
                 .await
             {
                 Ok(_resp) => {
@@ -158,7 +158,7 @@ pub async fn service_init(config: &Config) ->Result<()> {
 
     // spawn(async move {
     //     loop {
-    //         async_std::task::sleep(Duration::from_secs(DEFAULT_LOG_CLEANUP_INTERVAL)).await;
+
     //         log_cleanup(log_path.as_ref())?;
     //     }
     //     Ok(()) as Result<()>
@@ -174,8 +174,8 @@ pub async fn service_init(config: &Config) ->Result<()> {
 
     tasks.push(Task::<Result<()>>::local(async move {
         loop {
-            // async_std::task::sleep(Duration::from_secs(5 * 60)).await;
-            sleep(Duration::from_millis(5 * 60)).await;
+
+            sleep(Duration::from_secs(5 * 60)).await;
             let mut nodes = cleanup_state.server.lock().await;
             let now = chrono::Utc::now().timestamp();
             let len = nodes.len();
@@ -197,13 +197,13 @@ pub async fn service_init(config: &Config) ->Result<()> {
     }).detach());
 
     tasks.push(Task::<Result<()>>::local(async move {
-        let socket = UdpSocket::bind(DEFAULT_COMMAND_ADDR).await?;
+        let socket = UdpSocket::bind(DEFAULT_COMMAND_ADDR).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
         let mut buf = vec![0u8; 1024];
 
-        info!("Listening on {}", socket.local_addr()?);
+        info!("Listening on {}", socket.local_addr().unwrap());//TODO
 
         loop {
-            let (n, peer) = socket.recv_from(&mut buf).await?;
+            let (n, peer) = socket.recv_from(&mut buf).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
 
             let mut data = BytesMut::new();
             data.extend_from_slice(&buf[..n]);
@@ -226,7 +226,7 @@ pub async fn service_init(config: &Config) ->Result<()> {
                     let mut resp = BytesMut::new();
                     build_cmd_response(ret, &mut resp)?;
 
-                    let sent = socket.send_to(resp.as_ref(), &peer).await?;
+                    let sent = socket.send_to(resp.as_ref(), &peer).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
                     info!("Sent {} out of {} bytes to {}", sent, n, peer);
                 }
                 Frame::CreateUserResponse => {}

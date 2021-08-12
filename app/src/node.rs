@@ -1,7 +1,7 @@
 // use app::init::service_init;
 use app::DEFAULT_FALLBACK_ADDR;
-// use async_std::task::block_on;
-use async_std::task::spawn;
+
+
 use async_tls::TlsAcceptor;
 use clap::{App, Arg};
 use errors::{Result,Error};
@@ -72,23 +72,26 @@ fn main() -> Result<()> {
     let ex = LocalExecutorBuilder::new().make().map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
     ex.run(async move {
         service_init(&config).await?;
+
+        println!(" === init completed");
+        let proxy = ProxyBuilder::new(
+            proxy_addr,
+            tls_acceptor,
+            authenticator,
+            DEFAULT_FALLBACK_ADDR.to_string(),
+        );
+        LocalExecutorPoolBuilder::new(num_cpus::get())
+            .placement(Placement::MaxSpread(CpuSet::online().ok()))
+            .on_all_shards(|| async move {
+                let id = Local::id();
+                println!("Starting executor {}", id);
+                proxy.start().await?;
+                Ok(()) as Result<()>
+            }).unwrap()
+            .join_all();
         Ok(()) as Result<()>
     });
 
-    let proxy = ProxyBuilder::new(
-        proxy_addr,
-        tls_acceptor,
-        authenticator,
-        DEFAULT_FALLBACK_ADDR.to_string(),
-    );
-    LocalExecutorPoolBuilder::new(num_cpus::get())
-        .placement(Placement::MaxSpread(CpuSet::online().ok()))
-        .on_all_shards(|| async move {
-            let id = Local::id();
-            println!("Starting executor {}", id);
-            proxy.start().await?;
-            Ok(()) as Result<()>
-        }).unwrap()
-        .join_all();
+
     Ok(())
 }
