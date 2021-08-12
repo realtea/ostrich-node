@@ -32,6 +32,7 @@ use glommio::timer::{sleep};
 pub async fn service_init(config: &Config) ->Result<()> {
     //init log
     // let exe_path = std::env::current_exe()?;
+    let mut tasks = vec![];
     let exe_path = std::env::current_dir()?;
     let log_path = exe_path.join(DEFAULT_LOG_PATH);
     fs::create_dir_all(&log_path)?;
@@ -117,7 +118,7 @@ pub async fn service_init(config: &Config) ->Result<()> {
 
     let host = config.local_addr.to_owned();
     let port = config.local_port;
-    Task::<Result<()>>::local(async move {
+    tasks.push(Task::<Result<()>>::local(async move {
         loop {
             // async_std::task::sleep(Duration::from_secs(3 * 60)).await;
             sleep(Duration::from_millis(3 * 60)).await;
@@ -153,7 +154,7 @@ pub async fn service_init(config: &Config) ->Result<()> {
             }
         }
         // Ok(()) as Result<()>
-    }).detach();
+    }).detach(),);
 
     // spawn(async move {
     //     loop {
@@ -165,13 +166,13 @@ pub async fn service_init(config: &Config) ->Result<()> {
     let state = Arc::new(State::new(register_db));
     let cleanup_state = state.clone();
     // let register_task =
-    Task::<Result<()>>::local(async move {
+    tasks.push(Task::<Result<()>>::local(async move {
         let socket = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), DEFAULT_REGISTER_PORT);
         serve_register(socket, serve,state).await;
         Ok(()) as Result<()>
-    }).detach();
+    }).detach());
 
-    Task::<Result<()>>::local(async move {
+    tasks.push(Task::<Result<()>>::local(async move {
         loop {
             // async_std::task::sleep(Duration::from_secs(5 * 60)).await;
             sleep(Duration::from_millis(5 * 60)).await;
@@ -193,9 +194,9 @@ pub async fn service_init(config: &Config) ->Result<()> {
             drop(nodes);
         }
         // Ok(()) as Result<()>
-    }).detach();
+    }).detach());
 
-    Task::<Result<()>>::local(async move {
+    tasks.push(Task::<Result<()>>::local(async move {
         let socket = UdpSocket::bind(DEFAULT_COMMAND_ADDR).await?;
         let mut buf = vec![0u8; 1024];
 
@@ -233,8 +234,10 @@ pub async fn service_init(config: &Config) ->Result<()> {
             }
         }
         // Ok(()) as Result<()>
-    }).detach();
-
+    }).detach());
+    for task in tasks {
+        task.await.unwrap()?;
+    }
     Ok(())
 }
 

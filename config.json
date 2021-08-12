@@ -38,7 +38,7 @@
   },
   "mysql": {
     "enabled": true,
-    "server_addr": "/home/yosef/tmp/ostrich/db/",
+    "server_addr": "/home/yosef/rust/network/proxy/ostrich/db/",
     "server_port": 3306,
     "database": "trojan",
     "username": "trojan",

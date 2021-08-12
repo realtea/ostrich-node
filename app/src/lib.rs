@@ -119,7 +119,6 @@ impl fmt::Display for LogLevel {
 
 pub fn log_init(level: u8, log_path: &PathBuf) -> Result<()> {
     let log_level = LogLevel { level };
-    std::env::set_var("RUST_LOG", log_level.to_string());
     env_logger::Builder::new()
         .format(|buf, record| {
             writeln!(
@@ -133,7 +132,7 @@ pub fn log_init(level: u8, log_path: &PathBuf) -> Result<()> {
             )
         })
         // .filter(None, LevelFilter::Warn)
-        // .filter(Some("logger_example"), LevelFilter::Debug)
+        .filter(Some("logger_example"), LevelFilter::Debug)
         .init();
 
     // Logger::try_with_env()
