@@ -69,29 +69,29 @@ fn main() -> Result<()> {
     //     proxy.start().await?;
     //     Ok(()) as Result<()>
     // })?;
-    let ex = LocalExecutorBuilder::new().make().map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
-    ex.run(async move {
+    let ex = LocalExecutorBuilder::new().spawn(|| async move {
         service_init(&config).await?;
 
         println!(" === init completed");
-        let proxy = ProxyBuilder::new(
-            proxy_addr,
-            tls_acceptor,
-            authenticator,
-            DEFAULT_FALLBACK_ADDR.to_string(),
-        );
-        LocalExecutorPoolBuilder::new(num_cpus::get())
-            .placement(Placement::MaxSpread(CpuSet::online().ok()))
-            .on_all_shards(|| async move {
-                let id = Local::id();
-                println!("Starting executor {}", id);
-                proxy.start().await?;
-                Ok(()) as Result<()>
-            }).unwrap()
-            .join_all();
+
         Ok(()) as Result<()>
-    });
+    }).unwrap();
 
-
+    let proxy = ProxyBuilder::new(
+        proxy_addr,
+        tls_acceptor,
+        authenticator,
+        DEFAULT_FALLBACK_ADDR.to_string(),
+    );
+    LocalExecutorPoolBuilder::new(num_cpus::get())
+        .placement(Placement::MaxSpread(CpuSet::online().ok()))
+        .on_all_shards(|| async move {
+            let id = Local::id();
+            println!("Starting executor {}", id);
+            proxy.start().await?;
+            Ok(()) as Result<()>
+        }).unwrap()
+        .join_all();
+    ex.join().unwrap();
     Ok(())
 }
