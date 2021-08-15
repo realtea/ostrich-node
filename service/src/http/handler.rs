@@ -12,6 +12,7 @@ use serde_repr::*;
 use sqlx::pool::PoolConnection;
 use sqlx::Sqlite;
 use std::sync::Arc;
+use crate::acme::renew::challenge_acme;
 
 // static INTERNAL_SERVER_ERROR: &[u8] = b"Internal Server Error";
 static NOTFOUND: &[u8] = b"Not Found";
@@ -75,6 +76,10 @@ where
         }
 
         (&Method::POST, "/ostrich/api/server/update") => handle_server_update(req, state.clone())
+            .await
+            .map_err(|e| e.into()),
+
+        (&Method::GET, "/.well-known/acme-challenge/{chall}") => handle_acme_challenge(req)
             .await
             .map_err(|e| e.into()),
 
@@ -165,4 +170,13 @@ where
     let response = build_response(ret)?;
 
     Ok(response)
+}
+
+async fn handle_acme_challenge(req: Request<Body>) -> Result<Response<Body>>
+{
+    challenge_acme(req).await
+    //
+    // let response = build_response(ret)?;
+    //
+    // Ok(response)
 }

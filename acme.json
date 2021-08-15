@@ -1,0 +1,17 @@
+{
+   "certs": [
+      {
+         "name": "fbenpao.top",
+         "dns_name": "fbenpao.top"
+      }
+   ],
+   "acme": {
+      "acme_url": "https://acme-v02.api.letsencrypt.org/directory",
+      "acme_email": "xx@yy.com",
+      "renew_if_days_left": 7
+   },
+   "system": {
+      "chall_dir": "/etc/acmed/",
+      "data_dir": "/etc/acmed/"
+   }
+}

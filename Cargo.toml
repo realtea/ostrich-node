@@ -6,5 +6,5 @@ members = [
 "async-tls",
 "service",
 "command",
-
+"acmed"
 ]

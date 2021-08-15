@@ -8,7 +8,7 @@ use command::frame::Frame;
 use errors::{Error, Result, ServiceError};
 use service::api::users::{User, USER_TOKEN_MAX_LEN};
 use service::db::model::{EntityId, ProvideAuthn};
-use service::register::handler::{ResponseBody, ResponseEntity, Role};
+use service::http::handler::{ResponseBody, ResponseEntity, Role};
 use sqlx::pool::PoolConnection;
 use sqlx::Sqlite;
 use std::collections::HashMap;

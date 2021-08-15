@@ -22,7 +22,7 @@ pub mod hyper_compat {
     use crate::db::Db;
     use sqlx::pool::PoolConnection;
     use sqlx::Sqlite;
-    // use crate::register::handler::serve;
+    // use crate::http::handler::serve;
     use log::error;
     use futures_lite::StreamExt;
     // use errors::Result;

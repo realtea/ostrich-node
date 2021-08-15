@@ -9,7 +9,7 @@ use comfy_table::Table;
 use command::frame::Frame;
 use command::{build_cmd, opt::Opt};
 use errors::{Error, Result};
-use service::register::handler::{ResponseBody, ResponseEntity};
+use service::http::handler::{ResponseBody, ResponseEntity};
 use std::time::Duration;
 
 fn main() -> Result<()> {

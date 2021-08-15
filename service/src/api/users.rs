@@ -12,7 +12,7 @@ use std::default::Default;
 use std::ops::Sub;
 use std::sync::Arc;
 use hyper::body::Buf;
-use crate::register::handler::{ResponseEntity, ServerAddr, ServerNode};
+use crate::http::handler::{ResponseEntity, ServerAddr, ServerNode};
 use errors::{Error, Result, ServiceError};
 
 pub const USER_TOKEN_MAX_LEN: usize = 1024;

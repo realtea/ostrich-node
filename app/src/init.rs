@@ -15,7 +15,7 @@ use service::api::state::{Node, NodeAddress};
 use service::api::users::NODE_EXPIRE;
 use service::db::create_db;
 use service::db::model::EntityId;
-use service::{api::state::State, db, register::hyper::hyper_compat::serve_register};
+use service::{api::state::State, db, http::hyper::hyper_compat::serve_register};
 use std::fs;
 use std::net::{Ipv4Addr,  SocketAddrV4};
 use std::ops::Sub;
@@ -24,7 +24,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use trojan::config::Config;
 // use trojan::{load_certs, load_keys};
-use service::register::handler::serve;
+use service::http::handler::serve;
 use glommio::Task;
 use glommio::timer::{sleep};
 use glommio::net::UdpSocket;
@@ -235,6 +235,20 @@ pub async fn service_init(config: &Config) ->Result<()> {
         }
         // Ok(()) as Result<()>
     }).detach());
+
+    tasks.push(Task::<Result<()>>::local(async move {
+        let config = acmed::config::load("./acme.json")?;
+        trace!("Loaded runtime config: {:?}", config);
+        loop {
+            acmed::renew::run(&config)?;
+            sleep(Duration::from_secs(604800)).await;
+        }
+        Ok(()) as Result<()>
+    }).detach());
+
+
+
+
     for task in tasks {
         task.await.unwrap()?;
     }
