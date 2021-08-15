@@ -79,7 +79,7 @@ where
             .await
             .map_err(|e| e.into()),
 
-        (&Method::GET, "/.well-known/acme-challenge/{chall}") => handle_acme_challenge(req)
+        (&Method::GET, "/.well-known/acme-challenge/") => handle_acme_challenge(req)
             .await
             .map_err(|e| e.into()),
 

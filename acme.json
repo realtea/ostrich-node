@@ -2,7 +2,7 @@
    "certs": [
       {
          "name": "fbenpao.top",
-         "dns_name": "fbenpao.top"
+         "dns_names": "fbenpao.top"
       }
    ],
    "acme": {

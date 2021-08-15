@@ -9,7 +9,7 @@ use bytes::BytesMut;
 // use clap::{App, Arg};
 use command::frame::Frame;
 use errors::{Error, Result};
-use log::{info, warn};
+use log::{info, warn,error};
 use serde_json::Value;
 use service::api::state::{Node, NodeAddress};
 use service::api::users::NODE_EXPIRE;
@@ -237,8 +237,9 @@ pub async fn service_init(config: &Config) ->Result<()> {
     }).detach());
 
     tasks.push(Task::<Result<()>>::local(async move {
-        let config = acmed::config::load("./acme.json")?;
-        trace!("Loaded runtime config: {:?}", config);
+        let config = acmed::config::load("/root/ostrich-node/acme.json").map_err(|e| {error!("loading acme config: {:?}",e);e})?;
+        debug!("Loaded runtime config: {:?}", config);
+        sleep(Duration::from_secs(7)).await;
         loop {
             acmed::renew::run(&config)?;
             sleep(Duration::from_secs(604800)).await;

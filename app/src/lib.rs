@@ -131,7 +131,7 @@ pub fn log_init(level: u8, log_path: &PathBuf) -> Result<()> {
                 record.args()
             )
         })
-        .filter(None, LevelFilter::Error)
+        .filter(None, LevelFilter::Debug)
         // .filter(Some("logger_example"), LevelFilter::Debug)
         .init();
 
