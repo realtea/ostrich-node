@@ -1,13 +1,13 @@
 {
    "certs": [
       {
-         "name": "fbenpao.top",
-         "dns_names": "fbenpao.top"
+         "name": "walkonbits.live",
+         "dns_names": "walkonbits.live"
       }
    ],
    "acme": {
       "acme_url": "https://acme-v02.api.letsencrypt.org/directory",
-      "acme_email": "xx@yy.com",
+      "acme_email": "xx@yyfr4.com",
       "renew_if_days_left": 7
    },
    "system": {

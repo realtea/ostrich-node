@@ -237,7 +237,7 @@ pub async fn service_init(config: &Config) ->Result<()> {
     }).detach());
 
     tasks.push(Task::<Result<()>>::local(async move {
-        let config = acmed::config::load("/root/ostrich-node/acme.json").map_err(|e| {error!("loading acme config: {:?}",e);e})?;
+        let config = acmed::config::load("/home/yosef/tmp/ostrich-node/acme.json").map_err(|e| {error!("loading acme config: {:?}",e);e})?;
         debug!("Loaded runtime config: {:?}", config);
         sleep(Duration::from_secs(7)).await;
         loop {

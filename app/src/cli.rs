@@ -4,7 +4,7 @@ use async_std::future::timeout;
 use async_std::net::UdpSocket;
 use async_std::task;
 use bytes::BytesMut;
-use clap::{crate_version, FromArgMatches, IntoApp};
+use clap::{ FromArgMatches, IntoApp};
 use comfy_table::Table;
 use command::frame::Frame;
 use command::{build_cmd, opt::Opt};
@@ -13,12 +13,12 @@ use service::http::handler::{ResponseBody, ResponseEntity};
 use std::time::Duration;
 
 fn main() -> Result<()> {
-    let matches = Opt::into_app().version(crate_version!()).get_matches();
+    let matches = Opt::into_app().get_matches();
 
     task::block_on(async {
         let socket = UdpSocket::bind("127.0.0.1:0").await?;
         let mut data = BytesMut::default();
-        build_cmd(Opt::from_arg_matches(&matches), &mut data).await?;
+        build_cmd(Opt::from_arg_matches(&matches).unwrap(), &mut data).await?;
         timeout(
             Duration::from_secs(60),
             socket.send_to(data.as_ref(), DEFAULT_COMMAND_ADDR),
