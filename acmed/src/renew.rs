@@ -1,13 +1,10 @@
 use crate::acme;
-// use crate::args::RenewArgs;
 use crate::chall::Challenge;
 use crate::config::CertConfig;
 use crate::config::Config;
 use crate::errors::*;
 use crate::persist::FilePersist;
-use std::collections::HashSet;
 use std::fs;
-use std::process::Command;
 
 fn should_request_cert(
     // args: &RenewArgs,
@@ -34,26 +31,26 @@ fn should_request_cert(
     }
 }
 
-fn execute_hooks(hooks: &[String], dry_run: bool) -> Result<()> {
-    for exec in hooks {
-        if dry_run {
-            info!("executing hook: {:?} (dry run)", exec);
-        } else {
-            info!("executing hook: {:?}", exec);
-
-            let status = Command::new("sh")
-                .arg("-c")
-                .arg(exec)
-                .status()
-                .context("Failed to spawn shell for hook")?;
-
-            if !status.success() {
-                error!("Failed to execute hook: {:?}", exec);
-            }
-        }
-    }
-    Ok(())
-}
+// fn execute_hooks(hooks: &[String], dry_run: bool) -> Result<()> {
+//     for exec in hooks {
+//         if dry_run {
+//             info!("executing hook: {:?} (dry run)", exec);
+//         } else {
+//             info!("executing hook: {:?}", exec);
+//
+//             let status = Command::new("sh")
+//                 .arg("-c")
+//                 .arg(exec)
+//                 .status()
+//                 .context("Failed to spawn shell for hook")?;
+//
+//             if !status.success() {
+//                 error!("Failed to execute hook: {:?}", exec);
+//             }
+//         }
+//     }
+//     Ok(())
+// }
 
 fn renew_cert(
     // args: &RenewArgs,
@@ -139,13 +136,13 @@ fn cleanup_certs(persist: &FilePersist, dry_run: bool) -> Result<()> {
     Ok(())
 }
 
-pub fn run(config: Config) -> Result<()> {
-    let persist = FilePersist::new(&config);
+pub fn run(config: &Config) -> Result<()> {
+    let persist = FilePersist::new(config);
 
     // let filter = args.certs.drain(..).collect::<HashSet<_>>();
     // for cert in config.filter_certs(&filter) {
         for cert in &config.certs {
-        if let Err(err) = renew_cert( &config, &persist, cert) {
+        if let Err(err) = renew_cert( config, &persist, cert) {
             error!("Failed to renew ({:?}): {:#}", cert.name, err);
         }
     }

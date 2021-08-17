@@ -19,7 +19,7 @@ fn main() -> Result<()> {
         let socket = UdpSocket::bind("127.0.0.1:0").await?;
         let mut data = BytesMut::default();
         build_cmd(Opt::from_arg_matches(&matches).unwrap(), &mut data).await?;
-        timeout(
+        let _ = timeout(
             Duration::from_secs(60),
             socket.send_to(data.as_ref(), DEFAULT_COMMAND_ADDR),
         )

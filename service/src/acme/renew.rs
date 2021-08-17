@@ -1,9 +1,8 @@
 use hyper::{Request, Body, Response, StatusCode};
-use futures_lite::StreamExt;
 use errors::Result;
 use anyhow::anyhow;
 use std::path::Path;
-use acmed::{chall,http_responses};
+use acmed::{chall};
 use log::{info,debug};
 use acmed::http_responses::{BAD_REQUEST, NOT_FOUND};
 use std::fs;
@@ -34,15 +33,13 @@ pub async fn challenge_acme(
     req: Request<Body>,
 ) -> Result<Response<Body>>
 {
-    let token = req.uri().path().split("/").last().ok_or_else( ||  anyhow!("Failed to extract url token"))?;
     debug!("REQ: {:?}", req);
+    let token = req.uri().path().split("/").last().ok_or_else( ||  anyhow!("Failed to extract url token")).unwrap();
     info!("acme: {:?}", token);
-    info!("req uri: {:?}", req.uri().to_string());
     if !chall::valid_token(&token) {
         return bad_request();
     }
-    let query = req.uri().path().split("/").last().ok_or_else( ||  anyhow!("Failed to extract url token")).unwrap();
-    info!("req query: {:?}", query);
+
     let path = Path::new("challs").join(token);
     debug!("Reading challenge proof: {:?}", path);
     if let Ok(proof) = fs::read(path) {

@@ -1,23 +1,21 @@
 // use crate::args::Args;
 use crate::errors::*;
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::ffi::OsStr;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{ PathBuf};
 
-const LETSENCRYPT: &str = "https://acme-v02.api.letsencrypt.org/directory";
+// const LETSENCRYPT: &str = "https://acme-v02.api.letsencrypt.org/directory";
 // const LETSENCRYPT_STAGING: &str = "https://acme-staging-v02.api.letsencrypt.org/directory";
 pub const DEFAULT_RENEW_IF_DAYS_LEFT: i64 = 300;
+pub const DEFAULT_CONFIG_PATH: &str = "/home/ostrich/tmp/redirect/acmed.json";
 
-#[derive(Debug, PartialEq, Deserialize)]
-pub struct ConfigFile {
-    #[serde(default)]
-    pub acme: AcmeConfig,
-    #[serde(default)]
-    pub system: SystemConfig,
-}
+// #[derive(Debug, PartialEq, Deserialize)]
+// pub struct ConfigFile {
+//     #[serde(default)]
+//     pub acme: AcmeConfig,
+//     #[serde(default)]
+//     pub system: SystemConfig,
+// }
 
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct AcmeConfig {
@@ -41,35 +39,35 @@ pub struct CertConfigFile {
     cert: CertConfig,
 }
 
-fn load_str<T: DeserializeOwned>(s: &str) -> Result<T> {
-    let conf = toml::from_str(&s).context("Failed to load config")?;
-    Ok(conf)
-}
-
-fn load_file<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<T> {
-    let buf = fs::read_to_string(path.as_ref()).context("Failed to read file")?;
-    load_str(&buf)
-}
-
-fn load_from_folder<P: AsRef<Path>>(path: P) -> Result<Vec<CertConfigFile>> {
-    let mut configs = Vec::new();
-    let iter = fs::read_dir(path.as_ref())
-        .with_context(|| anyhow!("Failed to list directory: {:?}", path.as_ref()))?;
-
-    for file in iter {
-        let file = file?;
-        let path = file.path();
-
-        if path.extension() == Some(OsStr::new("conf")) {
-            let c = load_file(&path)
-                .with_context(|| anyhow!("Failed to load config file {:?}", path))?;
-            configs.push(c);
-        } else {
-            debug!("skipping non-config file {:?}", path);
-        }
-    }
-    Ok(configs)
-}
+// fn load_str<T: DeserializeOwned>(s: &str) -> Result<T> {
+//     let conf = toml::from_str(&s).context("Failed to load config")?;
+//     Ok(conf)
+// }
+//
+// fn load_file<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<T> {
+//     let buf = fs::read_to_string(path.as_ref()).context("Failed to read file")?;
+//     load_str(&buf)
+// }
+//
+// fn load_from_folder<P: AsRef<Path>>(path: P) -> Result<Vec<CertConfigFile>> {
+//     let mut configs = Vec::new();
+//     let iter = fs::read_dir(path.as_ref())
+//         .with_context(|| anyhow!("Failed to list directory: {:?}", path.as_ref()))?;
+//
+//     for file in iter {
+//         let file = file?;
+//         let path = file.path();
+//
+//         if path.extension() == Some(OsStr::new("conf")) {
+//             let c = load_file(&path)
+//                 .with_context(|| anyhow!("Failed to load config file {:?}", path))?;
+//             configs.push(c);
+//         } else {
+//             debug!("skipping non-config file {:?}", path);
+//         }
+//     }
+//     Ok(configs)
+// }
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct CertConfig {
@@ -102,16 +100,17 @@ impl Config {
 pub fn load() -> Result<Config> {
     let mut settings = config::Config::default();
 
-    settings.set_default("acme.acme_url", LETSENCRYPT)?;
-    settings.set_default("acme.renew_if_days_left", DEFAULT_RENEW_IF_DAYS_LEFT)?;
-
-    settings.set_default("system.data_dir", "/home/ostrich/tmp/redirect/tmp")?;
-    settings.set_default("system.chall_dir", "/home/ostrich/tmp/redirect/tmp")?;
+    // settings.set_default("acme.acme_url", LETSENCRYPT)?;
+    // settings.set_default("acme.renew_if_days_left", DEFAULT_RENEW_IF_DAYS_LEFT)?;
+    //
+    // settings.set_default("system.data_dir", "/home/ostrich/tmp/redirect/tmp")?;
+    // settings.set_default("system.chall_dir", "/home/ostrich/tmp/redirect/tmp")?;
 
     // let path = &args.config;
-    // settings
-    //     .merge(config::File::new(path, config::FileFormat::Toml))
-    //     .with_context(|| anyhow!("Failed to load config file {:?}", path))?;
+
+    settings
+        .merge(config::File::new(DEFAULT_CONFIG_PATH, config::FileFormat::Json))
+        .with_context(|| anyhow!("Failed to load config file {:?}", DEFAULT_CONFIG_PATH))?;
     //
     // if let Some(acme_email) = args.acme_email {
     //     settings.set("acme.acme_email", acme_email)?;
@@ -127,19 +126,19 @@ pub fn load() -> Result<Config> {
     // }
 
     let config = settings
-        .try_into::<ConfigFile>()
+        .try_into::<Config>()
         .context("Failed to parse config")?;
 
-    let certs = load_from_folder("/home/ostrich/tmp/redirect/contrib/confs/certs.d/")?
-        .into_iter()
-        .map(|c| c.cert)
-        .collect();
-
-    Ok(Config {
-        certs,
-        acme: config.acme,
-        system: config.system,
-    })
+    // let certs = load_from_folder("/home/ostrich/tmp/redirect/contrib/confs/certs.d/")?
+    //     .into_iter()
+    //     .map(|c| c.cert)
+    //     .collect();
+    Ok(config)
+    // Ok(Config {
+    //     certs,
+    //     acme: config.acme,
+    //     system: config.system,
+    // })
 }
 
 #[cfg(test)]

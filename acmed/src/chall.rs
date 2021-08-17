@@ -30,8 +30,9 @@ impl Challenge {
         if !valid_token(token) {
             bail!("ACME server sent us malicious token")
         }
-
+        fs::create_dir_all(&self.path)?;
         let path = self.path.join(token);
+
         debug!("Writing challenge proof to {:?}", path);
         fs::write(&path, proof).context("Failed to write challenge proof")?;
 

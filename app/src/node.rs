@@ -4,7 +4,7 @@ use app::DEFAULT_FALLBACK_ADDR;
 
 use async_tls::TlsAcceptor;
 use clap::{App, Arg};
-use errors::{Result,Error};
+use errors::{Result};
 use rustls::{NoClientAuth, ServerConfig};
 use std::io;
 use std::sync::Arc;

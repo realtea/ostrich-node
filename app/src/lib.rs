@@ -117,8 +117,8 @@ impl fmt::Display for LogLevel {
     }
 }
 
-pub fn log_init(level: u8, log_path: &PathBuf) -> Result<()> {
-    let log_level = LogLevel { level };
+pub fn log_init(_level: u8, _log_path: &PathBuf) -> Result<()> {
+    // let log_level = LogLevel { level };
     env_logger::Builder::new()
         .format(|buf, record| {
             writeln!(
@@ -175,11 +175,11 @@ pub fn log_cleanup(dir: &Path) -> Result<()> {
         let latest = files.iter().min_by_key(|f| f.0).map(|(k, _v)| *k);
         if latest.is_some() {
             let latest = latest.unwrap();
-            files
+            let _ = files
                 .iter()
                 .filter(|(k, _v)| **k != latest)
                 .map(|(_k, v)| {
-                    std::fs::remove_file(v)
+                    let _ = std::fs::remove_file(v)
                         .map_err(|e| error!("remove file: {:?}, error: {:?}", v.display(), e));
                 })
                 .collect::<Vec<()>>();

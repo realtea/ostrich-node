@@ -16,7 +16,7 @@ use service::api::users::NODE_EXPIRE;
 use service::db::create_db;
 use service::db::model::EntityId;
 use service::{api::state::State, db, http::hyper::hyper_compat::serve_register};
-use std::fs;
+use std::{fs, env};
 use std::net::{Ipv4Addr,  SocketAddrV4};
 use std::ops::Sub;
 // use std::str::FromStr;
@@ -28,6 +28,8 @@ use service::http::handler::serve;
 use glommio::Task;
 use glommio::timer::{sleep};
 use glommio::net::UdpSocket;
+use acmed::sandbox;
+use acmed::errors::Context;
 
 pub async fn service_init(config: &Config) ->Result<()> {
     //init log
@@ -165,16 +167,20 @@ pub async fn service_init(config: &Config) ->Result<()> {
     // });
     let state = Arc::new(State::new(register_db));
     let cleanup_state = state.clone();
+
+    let acmed_config = acmed::config::load().map_err(|e| {error!("loading acme config: {:?}",e);e})?;
     // let register_task =
+    let chall_dir = acmed_config.system.chall_dir.clone();
     tasks.push(Task::<Result<()>>::local(async move {
+        env::set_current_dir(&chall_dir)?;
+        sandbox::init().context("Failed to drop privileges")?;
         let socket = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), DEFAULT_REGISTER_PORT);
-        serve_register(socket, serve,state).await;
+        serve_register(socket, serve,state).await?;
         Ok(()) as Result<()>
     }).detach());
 
     tasks.push(Task::<Result<()>>::local(async move {
         loop {
-
             sleep(Duration::from_secs(5 * 60)).await;
             let mut nodes = cleanup_state.server.lock().await;
             let now = chrono::Utc::now().timestamp();
@@ -237,14 +243,14 @@ pub async fn service_init(config: &Config) ->Result<()> {
     }).detach());
 
     tasks.push(Task::<Result<()>>::local(async move {
-        let config = acmed::config::load("/home/yosef/tmp/ostrich-node/acme.json").map_err(|e| {error!("loading acme config: {:?}",e);e})?;
-        debug!("Loaded runtime config: {:?}", config);
+        // let config = acmed::config::load().map_err(|e| {error!("loading acme config: {:?}",e);e})?;
+        debug!("Loaded runtime config: {:?}", &acmed_config);
         sleep(Duration::from_secs(7)).await;
         loop {
-            acmed::renew::run(&config)?;
+            acmed::renew::run(&acmed_config)?;
             sleep(Duration::from_secs(604800)).await;
         }
-        Ok(()) as Result<()>
+        // Ok(()) as Result<()>
     }).detach());
 
 

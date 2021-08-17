@@ -1,8 +1,8 @@
 {
    "certs": [
       {
-         "name": "walkonbits.live",
-         "dns_names": ["walkonbits.live"]
+         "name": "walkonbits.site",
+         "dns_names": ["walkonbits.site"]
       }
    ],
    "acme": {
@@ -11,7 +11,7 @@
       "renew_if_days_left": 7
    },
    "system": {
-      "chall_dir": "/etc/acmed/",
-      "data_dir": "/etc/acmed/"
+      "chall_dir": "/home/ostrich/tmp/redirect/",
+      "data_dir": "/home/ostrich/tmp/redirect/"
    }
 }
