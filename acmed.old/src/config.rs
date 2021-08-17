@@ -1,23 +1,23 @@
-// use crate::args::Args;
-use crate::errors::*;
+// use crate::errors::*;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
-
-const LETSENCRYPT: &str = "https://acme-v02.api.letsencrypt.org/directory";
+use errors::{Result, Error};
+use anyhow::{bail,anyhow,Context};
+const LETSENCRYPT: &str = "https://acmed-v02.api.letsencrypt.org/directory";
 // const LETSENCRYPT_STAGING: &str = "https://acme-staging-v02.api.letsencrypt.org/directory";
-pub const DEFAULT_RENEW_IF_DAYS_LEFT: i64 = 300;
+pub const DEFAULT_RENEW_IF_DAYS_LEFT: i64 = 30;
 
-#[derive(Debug, PartialEq, Deserialize)]
-pub struct ConfigFile {
-    #[serde(default)]
-    pub acme: AcmeConfig,
-    #[serde(default)]
-    pub system: SystemConfig,
-}
+// #[derive(Debug, PartialEq, Deserialize)]
+// pub struct ConfigFile {
+//     #[serde(default)]
+//     pub acmed: AcmeConfig,
+//     #[serde(default)]
+//     pub system: SystemConfig,
+// }
 
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct AcmeConfig {
@@ -30,10 +30,6 @@ pub struct AcmeConfig {
 pub struct SystemConfig {
     pub data_dir: PathBuf,
     pub chall_dir: PathBuf,
-    #[serde(default)]
-    pub exec: Vec<String>,
-    #[serde(default)]
-    pub exec_extra: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Deserialize)]
@@ -77,8 +73,6 @@ pub struct CertConfig {
     pub dns_names: Vec<String>,
     #[serde(default)]
     pub must_staple: bool,
-    #[serde(default)]
-    pub exec: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -99,47 +93,30 @@ impl Config {
     }
 }
 
-pub fn load() -> Result<Config> {
+pub fn load(path: &str) -> Result<Config> {
     let mut settings = config::Config::default();
 
-    settings.set_default("acme.acme_url", LETSENCRYPT)?;
-    settings.set_default("acme.renew_if_days_left", DEFAULT_RENEW_IF_DAYS_LEFT)?;
+    settings.set_default("acmed.acme_url", LETSENCRYPT).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}",e)))?;
+    settings.set_default("acmed.renew_if_days_left", DEFAULT_RENEW_IF_DAYS_LEFT).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}",e)))?;
 
-    settings.set_default("system.data_dir", "/home/ostrich/tmp/redirect/tmp")?;
-    settings.set_default("system.chall_dir", "/home/ostrich/tmp/redirect/tmp")?;
+    settings.set_default("system.data_dir", "/var/lib/acmed-redirect").map_err(|e| Error::Eor(anyhow::anyhow!("{:?}",e)))?;
+    settings.set_default("system.chall_dir", "/run/acmed-redirect").map_err(|e| Error::Eor(anyhow::anyhow!("{:?}",e)))?;
 
-    // let path = &args.config;
-    // settings
-    //     .merge(config::File::new(path, config::FileFormat::Toml))
-    //     .with_context(|| anyhow!("Failed to load config file {:?}", path))?;
-    //
-    // if let Some(acme_email) = args.acme_email {
-    //     settings.set("acme.acme_email", acme_email)?;
-    // }
-    // if let Some(acme_url) = args.acme_url {
-    //     settings.set("acme.acme_url", acme_url)?;
-    // }
-    // if let Some(data_dir) = args.data_dir {
-    //     settings.set("system.data_dir", data_dir)?;
-    // }
-    // if let Some(chall_dir) = args.chall_dir {
-    //     settings.set("system.chall_dir", chall_dir)?;
-    // }
+    settings
+        .merge(config::File::new(path, config::FileFormat::Json))
+        .with_context(|| anyhow!("Failed to load config file {:?}", path)).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}",e)))?;
+
 
     let config = settings
-        .try_into::<ConfigFile>()
-        .context("Failed to parse config")?;
+        .try_into::<Config>()
+        .context("Failed to parse config").map_err(|e| Error::Eor(anyhow::anyhow!("{:?}",e)))?;
 
-    let certs = load_from_folder("/home/ostrich/tmp/redirect/contrib/confs/certs.d/")?
-        .into_iter()
-        .map(|c| c.cert)
-        .collect();
+    // let certs = load_from_folder(&args.config_dir)?
+    //     .into_iter()
+    //     .map(|c| c.cert)
+    //     .collect();
 
-    Ok(Config {
-        certs,
-        acme: config.acme,
-        system: config.system,
-    })
+    Ok(config)
 }
 
 #[cfg(test)]
@@ -164,7 +141,6 @@ mod tests {
                     name: "example.com".to_string(),
                     dns_names: vec!["example.com".to_string(), "www.example.com".to_string(),],
                     must_staple: false,
-                    exec: vec![],
                 },
             }
         );

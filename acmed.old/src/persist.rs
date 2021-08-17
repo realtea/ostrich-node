@@ -1,6 +1,5 @@
 use crate::cert::CertInfo;
 use crate::config::Config;
-use crate::errors::*;
 use acme_micro::Certificate;
 use std::collections::HashMap;
 use std::ffi::OsStr;
@@ -12,6 +11,9 @@ use std::os::unix::fs::symlink;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::path::PathBuf;
+use anyhow::{anyhow,bail,Context};
+use errors::{Result, Error};
+
 
 #[derive(Clone)]
 pub struct FilePersist {
@@ -122,7 +124,7 @@ impl FilePersist {
 
     pub fn store_cert(&self, name: &str, fullcert: &Certificate) -> Result<()> {
         let now = time::now_utc();
-        let now = time::strftime("%Y%m%d", &now)?;
+        let now = time::strftime("%Y%m%d", &now).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}",e)))?;
 
         let path = self.path.join("certs");
         debug!("creating folder: {:?}", path);
@@ -201,7 +203,7 @@ fn create(path: &Path, mode: u32) -> Result<File> {
         .truncate(true)
         .mode(mode)
         .open(path)
-        .map_err(Error::from)
+        .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))
 }
 
 fn write(path: &Path, mode: u32, data: &[u8]) -> Result<()> {
@@ -210,7 +212,7 @@ fn write(path: &Path, mode: u32, data: &[u8]) -> Result<()> {
     Ok(())
 }
 
-fn split_chain(fullchain: &str) -> Result<(String, String)> {
+fn split_chain(fullchain: &str) -> anyhow::Result<(String, String)> {
     let pems = pem::parse_many(fullchain);
 
     if pems.is_empty() {

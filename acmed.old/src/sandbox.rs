@@ -1,13 +1,14 @@
 // use crate::args::DaemonArgs;
-use crate::errors::*;
+// use crate::errors::*;
 use caps::CapSet;
 use nix::unistd::{Gid, Uid};
 use std::env;
 use std::fs;
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
-
-fn chroot(path: &Path) -> Result<()> {
+use errors::Result;
+use anyhow::{anyhow,Context,bail};
+fn chroot(path: &Path) -> anyhow::Result<()> {
     let metadata = fs::metadata(path)?;
 
     if !metadata.is_dir() {
@@ -36,8 +37,8 @@ fn drop_caps() -> Result<()> {
     Ok(())
 }
 
-pub fn init() -> Result<()> {
-    // let user = if let Some(name) = &args.user {
+pub fn init(user: Option<&str>, croot: bool) -> Result<()> {
+    // let user = if let Some(name) = user {
     //     debug!("Resolving uid for {:?}", name);
     //     let user = users::get_user_by_name(&name)
     //         .ok_or_else(|| anyhow!("Failed to look up user: {:?}", name))?;
@@ -49,7 +50,7 @@ pub fn init() -> Result<()> {
     //     None
     // };
     //
-    // if args.chroot {
+    // if croot {
     //     let path = env::current_dir().context("Failed to determine current directory")?;
     //     debug!("Chrooting into {:?}", path);
     //     chroot(&path).context("Failed to chroot")?;

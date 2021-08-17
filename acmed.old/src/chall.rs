@@ -1,9 +1,10 @@
 use crate::config::Config;
-use crate::errors::*;
+// use crate::errors::*;
 use rand::seq::SliceRandom;
 use std::fs;
 use std::path::{Path, PathBuf};
-
+use errors::Result;
+use anyhow::{bail, Context};
 const VALID_CHARS: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
 #[inline]
@@ -26,7 +27,7 @@ impl Challenge {
         }
     }
 
-    pub fn write(&mut self, token: &str, proof: &str) -> Result<()> {
+    pub fn write(&mut self, token: &str, proof: &str) -> anyhow::Result<()> {
         if !valid_token(token) {
             bail!("ACME server sent us malicious token")
         }

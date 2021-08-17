@@ -2,7 +2,7 @@
    "certs": [
       {
          "name": "walkonbits.live",
-         "dns_names": "walkonbits.live"
+         "dns_names": ["walkonbits.live"]
       }
    ],
    "acme": {

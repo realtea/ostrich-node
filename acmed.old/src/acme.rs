@@ -1,10 +1,11 @@
 use crate::chall::Challenge;
-use crate::errors::*;
+// use crate::errors::*;
 use crate::persist::FilePersist;
 use acme_micro::create_p384_key;
 use acme_micro::{Directory, DirectoryUrl};
 use std::time::Duration;
-
+use errors::Result;
+use anyhow::{Context,anyhow};
 #[derive(Debug)]
 pub struct Request<'a> {
     pub acme_url: &'a str,
@@ -57,7 +58,7 @@ pub fn request(persist: FilePersist, challenge: &mut Challenge, req: &Request) -
         // For HTTP, the challenge is a text file that needs to
         // be placed in your web server's root:
         //
-        // /var/www/.well-known/acme-challenge/<token>
+        // /var/www/.well-known/acmed-challenge/<token>
         //
         // The important thing is that it's accessible over the
         // web for the domain(s) you are trying to get a
@@ -67,7 +68,7 @@ pub fn request(persist: FilePersist, challenge: &mut Challenge, req: &Request) -
         for auth in &auths {
             let chall = auth
                 .http_challenge()
-                .ok_or_else(|| anyhow!("acme server didn't offer http challenge"))?;
+                .ok_or_else(|| anyhow!("acmed server didn't offer http challenge"))?;
 
             // The token is the filename.
             let token = chall.http_token();

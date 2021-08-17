@@ -3,12 +3,14 @@ use crate::acme;
 use crate::chall::Challenge;
 use crate::config::CertConfig;
 use crate::config::Config;
-use crate::errors::*;
+// use crate::errors::*;
 use crate::persist::FilePersist;
 use std::collections::HashSet;
 use std::fs;
 use std::process::Command;
-
+use errors::Result;
+use anyhow::{anyhow,Context};
+use log::{info,debug};
 fn should_request_cert(
     // args: &RenewArgs,
     config: &Config,
@@ -63,7 +65,7 @@ fn renew_cert(
 ) -> Result<()> {
     let mut challenge = Challenge::new(&config);
 
-    if !should_request_cert( &config, &persist, &cert)? {
+    if !should_request_cert(&config, &persist, &cert)? {
         debug!("Not requesting a certificate for {:?}", cert.name);
         return Ok(());
     }
@@ -139,18 +141,18 @@ fn cleanup_certs(persist: &FilePersist, dry_run: bool) -> Result<()> {
     Ok(())
 }
 
-pub fn run(config: Config) -> Result<()> {
+pub fn run(config: &Config) -> Result<()> {
     let persist = FilePersist::new(&config);
 
-    // let filter = args.certs.drain(..).collect::<HashSet<_>>();
+    // let filter = certs.drain(..).collect::<HashSet<_>>();
     // for cert in config.filter_certs(&filter) {
-        for cert in &config.certs {
-        if let Err(err) = renew_cert( &config, &persist, cert) {
+        for cert in &config.certs{
+        if let Err(err) = renew_cert(&config, &persist, &cert) {
             error!("Failed to renew ({:?}): {:#}", cert.name, err);
         }
     }
 
-    cleanup_certs(&persist, false).context("Failed to cleanup old certs")?;
+    cleanup_certs(&persist,false).context("Failed to cleanup old certs")?;
 
     Ok(())
 }
