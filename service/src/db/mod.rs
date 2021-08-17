@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use errors::Result;
-use sqlx::any::Any;
-use sqlx::migrate::MigrateDatabase;
+use sqlx::{any::Any, migrate::MigrateDatabase};
 
 /// Database implementation for PostgreSQL
 #[cfg(feature = "postgres")]

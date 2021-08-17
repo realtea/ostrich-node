@@ -1,11 +1,8 @@
-use crate::db::model::*;
-use crate::db::Db;
+use crate::db::{model::*, Db};
 use anyhow::Error;
 use async_trait::async_trait;
 use errors::{Result, ServiceError};
-use sqlx::pool::PoolConnection;
-use sqlx::SqlitePool;
-use sqlx::{Pool, Sqlite};
+use sqlx::{pool::PoolConnection, Pool, Sqlite, SqlitePool};
 use uuid::Uuid;
 
 // impl TryFrom<&SqliteError> for ProvideErrorKind {
@@ -21,9 +18,7 @@ use uuid::Uuid;
 // }
 
 pub async fn connect(db_url: &str) -> Result<Pool<Sqlite>> {
-    let pool = SqlitePool::connect(db_url)
-        .await
-        .map_err(|e| Error::from(ServiceError::Provider(e)))?;
+    let pool = SqlitePool::connect(db_url).await.map_err(|e| Error::from(ServiceError::Provider(e)))?;
     Ok(pool)
 }
 
@@ -32,10 +27,7 @@ impl Db for SqlitePool {
     type Conn = PoolConnection<Sqlite>;
 
     async fn conn(&self) -> Result<Self::Conn> {
-        let conn = self
-            .acquire()
-            .await
-            .map_err(|e| Error::from(ServiceError::Provider(e)))?;
+        let conn = self.acquire().await.map_err(|e| Error::from(ServiceError::Provider(e)))?;
         Ok(conn)
     }
 }
@@ -49,7 +41,7 @@ impl ProvideAuthn for PoolConnection<Sqlite> {
             r#"
 INSERT INTO users (user_id,token,role )
 VALUES ( $1, $2,$3 );
-            "#,
+            "#
         )
         .bind(my_uuid)
         .bind::<String>(token)
@@ -66,7 +58,7 @@ VALUES ( $1, $2,$3 );
 SELECT user_id, token,role
 FROM users
 WHERE user_id = $1
-        "#,
+        "#
         )
         .bind(user_id)
         .fetch_one(self)
@@ -80,7 +72,7 @@ WHERE user_id = $1
 SELECT user_id, token,role
 FROM users
 WHERE token = $1
-        "#,
+        "#
         )
         .bind(token)
         .fetch_one(self)
@@ -94,7 +86,7 @@ WHERE token = $1
 UPDATE users
 SET token = $2,role = $3, updated_at = (STRFTIME('%s', 'now'))
 WHERE user_id = $1
-            "#,
+            "#
         )
         .bind(&updated.user_id)
         .bind(&updated.token)

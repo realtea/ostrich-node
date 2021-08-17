@@ -27,7 +27,6 @@ rand = "0.8.3"
 thiserror = "1.0.25"
 uuid = { version = "0.8", features = ["serde", "v4"] }
 errors = {path = "../errors"}
-trojan = {path = "../trojan"}
 acmed = {path = "../acmed" }
 [features]
 default= ["sqlite"]

@@ -1,8 +1,9 @@
-use crate::config::Config;
-use crate::errors::*;
+use crate::{config::Config, errors::*};
 use rand::seq::SliceRandom;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf}
+};
 
 const VALID_CHARS: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
@@ -13,17 +14,14 @@ pub fn valid_token(t: &str) -> bool {
 
 pub struct Challenge {
     path: PathBuf,
-    written: Vec<PathBuf>,
+    written: Vec<PathBuf>
 }
 
 impl Challenge {
     pub fn new(config: &Config) -> Challenge {
         let chall_dir = Path::new(&config.system.chall_dir);
         // TODO: consider creating the directory
-        Challenge {
-            path: chall_dir.join("challs"),
-            written: Vec::new(),
-        }
+        Challenge { path: chall_dir.join("challs"), written: Vec::new() }
     }
 
     pub fn write(&mut self, token: &str, proof: &str) -> Result<()> {
@@ -45,11 +43,8 @@ impl Challenge {
         const TOKEN_LEN: usize = 16;
         let mut rng = rand::thread_rng();
 
-        let random = VALID_CHARS
-            .as_bytes()
-            .choose_multiple(&mut rng, TOKEN_LEN)
-            .map(|b| *b as char)
-            .collect::<String>();
+        let random =
+            VALID_CHARS.as_bytes().choose_multiple(&mut rng, TOKEN_LEN).map(|b| *b as char).collect::<String>();
 
         self.write(&random, &random)?;
         Ok(random)

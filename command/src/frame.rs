@@ -6,7 +6,7 @@ const CRC: Crc<u64> = Crc::<u64>::new(&CRC_64_ECMA_182);
 pub enum Frame {
     CreateUserRequest = 0x00,
     CreateUserResponse = 0x01,
-    UnKnown = 0x16,
+    UnKnown = 0x16
 }
 
 impl From<u8> for Frame {
@@ -14,7 +14,7 @@ impl From<u8> for Frame {
         let frame = match item {
             0x00 => Frame::CreateUserRequest,
             0x01 => Frame::CreateUserResponse,
-            _ => Frame::UnKnown,
+            _ => Frame::UnKnown
         };
         frame
     }
@@ -24,7 +24,7 @@ impl From<Frame> for u8 {
         let u8_frame = match item {
             Frame::CreateUserRequest => 0x00,
             Frame::CreateUserResponse => 0x01,
-            Frame::UnKnown => 0x16,
+            Frame::UnKnown => 0x16
         };
         u8_frame
     }
@@ -34,7 +34,7 @@ impl From<&Frame> for u8 {
         let u8_frame = match *item {
             Frame::CreateUserRequest => 0x00,
             Frame::CreateUserResponse => 0x01,
-            Frame::UnKnown => 0x16,
+            Frame::UnKnown => 0x16
         };
         u8_frame
     }
@@ -42,9 +42,7 @@ impl From<&Frame> for u8 {
 
 impl Frame {
     pub fn get_frame_type<B>(data: B) -> Self
-    where
-        B: AsRef<[u8]>,
-    {
+    where B: AsRef<[u8]> {
         let mut data_ref = data.as_ref().clone();
         data_ref.advance(4 + 8);
         let frame = BigEndian::read_uint(data_ref.as_ref(), 1) as u8;
@@ -69,6 +67,7 @@ impl Frame {
         packet.put(data.as_ref());
         packet.freeze()
     }
+
     // pub fn unpack_msg_frame<B>(data: &mut [u8]) -> anyhow::Result<()>
     // where
     //     B: AsRef<Bytes>,
@@ -77,13 +76,13 @@ impl Frame {
 
         let size = {
             if data.len() < 4 {
-                return Err(anyhow::anyhow!("msg does not has enough 'length' byte!"));
+                return Err(anyhow::anyhow!("msg does not has enough 'length' byte!"))
             }
             BigEndian::read_u32(data.as_ref()) as u32
         };
-        //TODO test( size + std::mem::size_of_val(size))
+        // TODO test( size + std::mem::size_of_val(size))
         if data.len() <= (size + 4) as usize {
-            return Err(anyhow::anyhow!("msg is too short!"));
+            return Err(anyhow::anyhow!("msg is too short!"))
         }
 
         data.advance(std::mem::size_of_val(&size));
@@ -95,7 +94,7 @@ impl Frame {
         let check = CRC.checksum(data.as_ref());
         //        dbg!(sum == check);
         if sum != check {
-            return Err(anyhow::anyhow!("msg mismatch sum"));
+            return Err(anyhow::anyhow!("msg mismatch sum"))
         }
         Ok(())
     }

@@ -7,20 +7,22 @@ use errors::{Error, Result};
 use futures::{AsyncRead, AsyncReadExt};
 use hex::encode;
 pub use proxy::*;
-use rustls::internal::pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
-use rustls::Certificate;
-use rustls::PrivateKey;
+use rustls::{
+    internal::pemfile::{certs, pkcs8_private_keys, rsa_private_keys},
+    Certificate, PrivateKey
+};
 use sha2::{Digest, Sha224};
-use std::fmt;
-use std::fmt::{Debug, Formatter};
-use std::fs::File;
-use std::io::{BufReader, Cursor};
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
-use std::path::Path;
+use std::{
+    fmt,
+    fmt::{Debug, Formatter},
+    fs::File,
+    io::{BufReader, Cursor},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    path::Path
+};
 
 pub fn load_certs(path: &Path) -> Result<Vec<Certificate>> {
-    certs(&mut BufReader::new(File::open(path)?))
-        .map_err(|_| Error::Eor(anyhow!("could not find carts")))
+    certs(&mut BufReader::new(File::open(path)?)).map_err(|_| Error::Eor(anyhow!("could not find carts")))
 }
 
 #[macro_export]
@@ -29,7 +31,7 @@ macro_rules! key {
         let reader = &mut BufReader::new(File::open($p)?);
         if let Ok(mut keys) = $e(reader) {
             if !keys.is_empty() {
-                return Ok(keys.remove(0));
+                return Ok(keys.remove(0))
             }
         }
     };
@@ -58,11 +60,11 @@ pub enum Address {
     /// Socket address (IP Address)
     SocketAddress(SocketAddr),
     /// Domain name address
-    DomainNameAddress(String, u16),
+    DomainNameAddress(String, u16)
 }
 impl Address {
-    const ADDR_TYPE_IPV4: u8 = 1;
     const ADDR_TYPE_DOMAIN_NAME: u8 = 3;
+    const ADDR_TYPE_IPV4: u8 = 1;
     const ADDR_TYPE_IPV6: u8 = 4;
 
     #[inline]
@@ -70,14 +72,12 @@ impl Address {
         match self {
             Address::SocketAddress(SocketAddr::V4(..)) => 1 + 4 + 2,
             Address::SocketAddress(SocketAddr::V6(..)) => 1 + 8 * 2 + 2,
-            Address::DomainNameAddress(ref dmname, _) => 1 + 1 + dmname.len() + 2,
+            Address::DomainNameAddress(ref dmname, _) => 1 + 1 + dmname.len() + 2
         }
     }
 
     async fn read_from_stream<R>(stream: &mut R) -> Result<Address>
-    where
-        R: AsyncRead + Unpin,
-    {
+    where R: AsyncRead + Unpin {
         let mut addr_type_buf = [0u8; 1];
         let _ = stream.read_exact(&mut addr_type_buf).await?;
 
@@ -88,16 +88,9 @@ impl Address {
                 stream.read_exact(&mut buf).await?;
                 let mut cursor = Cursor::new(buf);
 
-                let v4addr = Ipv4Addr::new(
-                    cursor.get_u8(),
-                    cursor.get_u8(),
-                    cursor.get_u8(),
-                    cursor.get_u8(),
-                );
+                let v4addr = Ipv4Addr::new(cursor.get_u8(), cursor.get_u8(), cursor.get_u8(), cursor.get_u8());
                 let port = cursor.get_u16();
-                Ok(Address::SocketAddress(SocketAddr::V4(SocketAddrV4::new(
-                    v4addr, port,
-                ))))
+                Ok(Address::SocketAddress(SocketAddr::V4(SocketAddrV4::new(v4addr, port))))
             }
             Self::ADDR_TYPE_IPV6 => {
                 let mut buf = [0u8; 18];
@@ -112,13 +105,11 @@ impl Address {
                     cursor.get_u16(),
                     cursor.get_u16(),
                     cursor.get_u16(),
-                    cursor.get_u16(),
+                    cursor.get_u16()
                 );
                 let port = cursor.get_u16();
 
-                Ok(Address::SocketAddress(SocketAddr::V6(SocketAddrV6::new(
-                    v6addr, port, 0, 0,
-                ))))
+                Ok(Address::SocketAddress(SocketAddr::V6(SocketAddrV6::new(v6addr, port, 0, 0))))
             }
             Self::ADDR_TYPE_DOMAIN_NAME => {
                 let mut length_buf = [0u8; 1];
@@ -132,7 +123,7 @@ impl Address {
                 let domain_buf = &addr_buf[..length];
                 let addr = match String::from_utf8(domain_buf.to_vec()) {
                     Ok(addr) => addr,
-                    Err(..) => return Err(Error::Eor(anyhow::anyhow!("invalid address encoding"))),
+                    Err(..) => return Err(Error::Eor(anyhow::anyhow!("invalid address encoding")))
                 };
                 let mut port_buf = &addr_buf[length..length + 2];
                 let port = port_buf.get_u16();
@@ -141,13 +132,11 @@ impl Address {
             }
             _ => {
                 // Wrong Address Type . Socks5 only supports ipv4, ipv6 and domain name
-                Err(Error::Eor(anyhow::anyhow!(
-                    "not supported address type {:#x}",
-                    addr_type
-                )))
+                Err(Error::Eor(anyhow::anyhow!("not supported address type {:#x}", addr_type)))
             }
         }
     }
+
     fn write_to_buf<B: BufMut>(&self, buf: &mut B) {
         match self {
             Self::SocketAddress(SocketAddr::V4(addr)) => {
@@ -177,7 +166,7 @@ impl Debug for Address {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match *self {
             Address::SocketAddress(ref addr) => write!(f, "{}", addr),
-            Address::DomainNameAddress(ref addr, ref port) => write!(f, "{}:{}", addr, port),
+            Address::DomainNameAddress(ref addr, ref port) => write!(f, "{}:{}", addr, port)
         }
     }
 }
@@ -187,7 +176,7 @@ impl fmt::Display for Address {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match *self {
             Address::SocketAddress(ref addr) => write!(f, "{}", addr),
-            Address::DomainNameAddress(ref addr, ref port) => write!(f, "{}:{}", addr, port),
+            Address::DomainNameAddress(ref addr, ref port) => write!(f, "{}:{}", addr, port)
         }
     }
 }

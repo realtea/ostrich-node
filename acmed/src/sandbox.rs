@@ -23,10 +23,8 @@ use caps::CapSet;
 
 fn drop_caps() -> Result<()> {
     debug!("Permanently clearing capability sets");
-    caps::clear(None, CapSet::Effective)
-        .map_err(|err| anyhow!("Failed to clear effective capability set: {}", err))?;
-    caps::clear(None, CapSet::Permitted)
-        .map_err(|err| anyhow!("Failed to clear permitted capability set: {}", err))?;
+    caps::clear(None, CapSet::Effective).map_err(|err| anyhow!("Failed to clear effective capability set: {}", err))?;
+    caps::clear(None, CapSet::Permitted).map_err(|err| anyhow!("Failed to clear permitted capability set: {}", err))?;
     Ok(())
 }
 

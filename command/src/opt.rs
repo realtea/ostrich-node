@@ -3,23 +3,23 @@ use clap::Clap;
 #[derive(Clap, Debug)]
 pub struct Opt {
     #[clap(subcommand)]
-    pub command: Command,
+    pub command: Command
 }
 
 #[derive(Clap, Debug)]
 pub enum Command {
-    User(UserOpt),
+    User(UserOpt)
 }
 #[derive(Clap, Debug)]
 pub struct UserOpt {
     #[clap(subcommand)]
-    pub command: UserCommand,
+    pub command: UserCommand
 }
 
 #[derive(Debug, Clap)]
 pub struct User {
     #[clap(required = true)]
-    pub name: String,
+    pub name: String
 }
 
 #[derive(Clap, Debug)]
@@ -32,5 +32,5 @@ pub enum UserCommand {
 
     List(User),
 
-    Lists,
+    Lists
 }

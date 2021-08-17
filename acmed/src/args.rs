@@ -1,7 +1,9 @@
 use crate::errors::*;
 use std::io::stdout;
-use structopt::clap::{AppSettings, Shell};
-use structopt::StructOpt;
+use structopt::{
+    clap::{AppSettings, Shell},
+    StructOpt
+};
 
 #[derive(Debug, StructOpt)]
 #[structopt(global_settings = &[AppSettings::ColoredHelp])]
@@ -12,13 +14,7 @@ pub struct Args {
     /// Silent output (except errors)
     #[structopt(short, long, global = true)]
     pub quiet: bool,
-    #[structopt(
-        short,
-        long,
-        value_name = "path",
-        default_value = "/etc/acme-redirect.conf",
-        env = "ACME_CONFIG"
-    )]
+    #[structopt(short, long, value_name = "path", default_value = "/etc/acme-redirect.conf", env = "ACME_CONFIG")]
     pub config: String,
     // #[structopt(
     //     long,
@@ -36,7 +32,7 @@ pub struct Args {
     #[structopt(long, env = "ACME_EMAIL")]
     pub acme_email: Option<String>,
     #[structopt(subcommand)]
-    pub subcommand: SubCommand,
+    pub subcommand: SubCommand
 }
 
 #[derive(Debug, Clone, StructOpt)]
@@ -44,7 +40,7 @@ pub enum SubCommand {
     #[structopt(flatten)]
     Cmds(Cmd),
     /// Generate shell completions
-    Completions(Completions),
+    Completions(Completions)
 }
 
 #[derive(Debug, Clone, StructOpt)]
@@ -54,11 +50,10 @@ pub enum Cmd {
     /// Show the status of our certificates
     Status,
     /// Request new certificates if needed
-    Renew(RenewArgs),
-    /*    /// Check if the challenges could be completed
-    Check(CheckArgs),
-    /// Load the configuration and dump it to stdout as json
-    DumpConfig,*/
+    Renew(RenewArgs) /*    /// Check if the challenges could be completed
+                      * Check(CheckArgs),
+                      * Load the configuration and dump it to stdout as json
+                      * DumpConfig, */
 }
 
 #[derive(Debug, Clone, StructOpt)]
@@ -71,7 +66,7 @@ pub struct DaemonArgs {
     pub user: Option<String>,
     /// Chroot into the challenge directory
     #[structopt(long)]
-    pub chroot: bool,
+    pub chroot: bool
 }
 
 #[derive(Debug, Clone, StructOpt)]
@@ -93,19 +88,19 @@ pub struct RenewArgs {
     #[structopt(long)]
     pub hooks_only: bool,
     /// Only renew specific certs
-    pub certs: Vec<String>,
+    pub certs: Vec<String>
 }
 
 #[derive(Debug, Clone, StructOpt)]
 pub struct CheckArgs {
     /// Only check specific certs
-    pub certs: Vec<String>,
+    pub certs: Vec<String>
 }
 
 #[derive(Debug, Clone, StructOpt)]
 pub struct Completions {
     #[structopt(possible_values=&Shell::variants())]
-    pub shell: Shell,
+    pub shell: Shell
 }
 
 pub fn gen_completions(args: &Completions) -> Result<()> {

@@ -4,23 +4,17 @@ pub mod hyper_compat {
     use std::{
         net::SocketAddr,
         pin::Pin,
-        task::{Context, Poll},
+        task::{Context, Poll}
     };
 
-    use crate::api::state::State;
-    use crate::db::Db;
+    use crate::{api::state::State, db::Db};
     use glommio::{
-        // enclose,
         net::{TcpListener, TcpStream},
-        // sync::Semaphore,
-        Local,
-        Task,
+        Local, Task
     };
     use hyper::{server::conn::Http, Body, Request, Response};
-    use sqlx::pool::PoolConnection;
-    use sqlx::Sqlite;
-    use std::io;
-    use std::sync::Arc;
+    use sqlx::{pool::PoolConnection, Sqlite};
+    use std::{io, sync::Arc};
     use tokio::io::ReadBuf;
     // use crate::http::handler::serve;
     use futures_lite::StreamExt;
@@ -30,14 +24,14 @@ pub mod hyper_compat {
         addr: A,
         mut service: S,
         // max_connections: usize,
-        state: Arc<State<T>>,
+        state: Arc<State<T>>
     ) -> io::Result<()>
     where
         S: FnMut(Request<Body>, Arc<State<T>>) -> F + 'static + Copy,
         F: Future<Output = Result<Response<Body>, R>> + 'static,
         R: std::error::Error + 'static + Send + Sync,
         A: Into<SocketAddr>,
-        T: Send + Sync + 'static + Db<Conn = PoolConnection<Sqlite>>,
+        T: Send + Sync + 'static + Db<Conn = PoolConnection<Sqlite>>
     {
         let listener = TcpListener::bind(addr.into())?;
         // let conn_control = Rc::new(Semaphore::new(max_connections as _));
@@ -54,10 +48,7 @@ pub mod hyper_compat {
                 // let _permit = conn_control.acquire_permit(1).await;
                 if let Err(x) = Http::new()
                     .with_executor(HyperExecutor)
-                    .serve_connection(
-                        HyperStream(stream),
-                        service_fn(|req| service(req, state.clone())),
-                    )
+                    .serve_connection(HyperStream(stream), service_fn(|req| service(req, state.clone())))
                     .await
                 {
                     error!("Stream from {:?} failed with error {:?}", addr, x);
@@ -76,7 +67,7 @@ pub mod hyper_compat {
     impl<F> hyper::rt::Executor<F> for HyperExecutor
     where
         F: Future + 'static,
-        F::Output: 'static,
+        F::Output: 'static
     {
         fn execute(&self, fut: F) {
             Task::local(fut).detach();
@@ -86,28 +77,18 @@ pub mod hyper_compat {
     struct HyperStream(pub TcpStream);
 
     impl tokio::io::AsyncRead for HyperStream {
-        fn poll_read(
-            mut self: Pin<&mut Self>,
-            cx: &mut Context,
-            buf: &mut ReadBuf<'_>,
-        ) -> Poll<io::Result<()>> {
-            Pin::new(&mut self.0)
-                .poll_read(cx, buf.initialize_unfilled())
-                .map(|n| {
-                    if n.is_ok() {
-                        buf.advance(n?);
-                    }
-                    Ok(())
-                })
+        fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
+            Pin::new(&mut self.0).poll_read(cx, buf.initialize_unfilled()).map(|n| {
+                if n.is_ok() {
+                    buf.advance(n?);
+                }
+                Ok(())
+            })
         }
     }
 
     impl tokio::io::AsyncWrite for HyperStream {
-        fn poll_write(
-            mut self: Pin<&mut Self>,
-            cx: &mut Context,
-            buf: &[u8],
-        ) -> Poll<io::Result<usize>> {
+        fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<io::Result<usize>> {
             Pin::new(&mut self.0).poll_write(cx, buf)
         }
 

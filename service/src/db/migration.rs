@@ -1,5 +1,7 @@
-use sqlx::migrate::{MigrateError, Migrator};
-use sqlx::sqlite::SqlitePoolOptions;
+use sqlx::{
+    migrate::{MigrateError, Migrator},
+    sqlite::SqlitePoolOptions
+};
 use std::path::Path;
 
 // [cfg(feature = "sqlite")]

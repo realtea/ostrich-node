@@ -1,8 +1,5 @@
-use crate::chall::Challenge;
-use crate::errors::*;
-use crate::persist::FilePersist;
-use acme_micro::create_p384_key;
-use acme_micro::{Directory, DirectoryUrl};
+use crate::{chall::Challenge, errors::*, persist::FilePersist};
+use acme_micro::{create_p384_key, Directory, DirectoryUrl};
 use std::time::Duration;
 
 #[derive(Debug)]
@@ -10,18 +7,14 @@ pub struct Request<'a> {
     pub acme_url: &'a str,
     pub account_email: Option<&'a str>,
     pub primary_name: &'a str,
-    pub alt_names: &'a [String],
+    pub alt_names: &'a [String]
 }
 
 pub fn request(persist: FilePersist, challenge: &mut Challenge, req: &Request) -> Result<()> {
     let url = DirectoryUrl::Other(&req.acme_url);
     let dir = Directory::from_url(url)?;
 
-    let contact = if let Some(email) = req.account_email {
-        vec![format!("mailto:{}", email)]
-    } else {
-        vec![]
-    };
+    let contact = if let Some(email) = req.account_email { vec![format!("mailto:{}", email)] } else { vec![] };
 
     let acc = if let Some(acc) = persist.load_acc_privkey()? {
         info!("authenticating with existing account");
@@ -46,7 +39,7 @@ pub fn request(persist: FilePersist, challenge: &mut Challenge, req: &Request) -
         // are we done?
         if let Some(ord_csr) = ord_new.confirm_validations() {
             info!("order has been confirmed");
-            break ord_csr;
+            break ord_csr
         }
 
         // Get the possible authorizations (for a single domain
@@ -65,9 +58,7 @@ pub fn request(persist: FilePersist, challenge: &mut Challenge, req: &Request) -
         //
         // http://mydomain.io/.well-known/acme-challenge/<token>
         for auth in &auths {
-            let chall = auth
-                .http_challenge()
-                .ok_or_else(|| anyhow!("acme server didn't offer http challenge"))?;
+            let chall = auth.http_challenge().ok_or_else(|| anyhow!("acme server didn't offer http challenge"))?;
 
             // The token is the filename.
             let token = chall.http_token();
@@ -110,9 +101,7 @@ pub fn request(persist: FilePersist, challenge: &mut Challenge, req: &Request) -
     let cert = ord_cert.download_cert()?;
 
     info!("storing certificate");
-    persist
-        .store_cert(&req.primary_name, &cert)
-        .context("Failed to store certificate")?;
+    persist.store_cert(&req.primary_name, &cert).context("Failed to store certificate")?;
 
     Ok(())
 }

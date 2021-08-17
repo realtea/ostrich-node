@@ -1,56 +1,37 @@
-use crate::copy::copy;
-use crate::Address;
+use crate::{copy::copy, Address};
 // use async_std::net::{TcpListener, TcpStream, UdpSocket};
 // use async_std::task::spawn;
-use async_tls::server::TlsStream;
-use async_tls::TlsAcceptor;
+use async_tls::{server::TlsStream, TlsAcceptor};
 use bytes::BufMut;
-use errors::Error;
-use errors::Result;
-use futures_util::future::Either;
-use futures_util::io::AsyncReadExt;
-use futures_util::stream::StreamExt;
-use futures_util::FutureExt;
-use futures_util::{AsyncRead, AsyncWrite, AsyncWriteExt};
-use log::debug;
-use log::error;
-use log::info;
-use std::net::{Ipv6Addr, SocketAddr, SocketAddrV6};
-use std::sync::Arc;
+use errors::{Error, Result};
+use futures_util::{
+    future::Either, io::AsyncReadExt, stream::StreamExt, AsyncRead, AsyncWrite, AsyncWriteExt, FutureExt
+};
+use log::{debug, error, info};
+use std::{
+    net::{Ipv6Addr, SocketAddr, SocketAddrV6},
+    sync::Arc
+};
 
 use glommio::{
-    // enclose,
     net::{TcpListener, TcpStream, UdpSocket},
-    // sync::Semaphore,
-    Local,
-    // Task,
+    Local
 };
 #[derive(Clone)]
 pub struct ProxyBuilder {
     addr: String,
     acceptor: TlsAcceptor,
     authenticator: Vec<String>,
-    fallback: String,
+    fallback: String
 }
 
 impl ProxyBuilder {
-    pub fn new(
-        addr: String,
-        acceptor: TlsAcceptor,
-        authenticator: Vec<String>,
-        fallback: String,
-    ) -> Self {
-        Self {
-            addr,
-            acceptor,
-            authenticator,
-            fallback,
-        }
+    pub fn new(addr: String, acceptor: TlsAcceptor, authenticator: Vec<String>, fallback: String) -> Self {
+        Self { addr, acceptor, authenticator, fallback }
     }
 
     pub async fn start(self) -> Result<()> {
-        let listener =
-            TcpListener::bind(&self.addr).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+        let listener = TcpListener::bind(&self.addr).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
         info!("proxy started at: {}", self.addr);
         let mut incoming = listener.incoming();
 
@@ -67,13 +48,7 @@ impl ProxyBuilder {
             let fallback = self.fallback.clone();
             Local::local(async move {
                 debug!("new connection test");
-                process_stream(
-                    acceptor.clone(),
-                    incoming_stream,
-                    shared_authenticator.clone(),
-                    fallback.clone(),
-                )
-                .await
+                process_stream(acceptor.clone(), incoming_stream, shared_authenticator.clone(), fallback.clone()).await
             })
             .detach();
         }
@@ -82,15 +57,9 @@ impl ProxyBuilder {
 }
 /// start TLS stream at addr to target
 async fn process_stream(
-    acceptor: Arc<TlsAcceptor>,
-    raw_stream: TcpStream,
-    authenticator: Arc<Vec<String>>,
-    fallback: String,
+    acceptor: Arc<TlsAcceptor>, raw_stream: TcpStream, authenticator: Arc<Vec<String>>, fallback: String
 ) {
-    let source = raw_stream
-        .peer_addr()
-        .map(|addr| addr.to_string())
-        .unwrap_or_else(|_| "".to_owned());
+    let source = raw_stream.peer_addr().map(|addr| addr.to_string()).unwrap_or_else(|_| "".to_owned());
 
     debug!("new connection from {}", source);
 
@@ -103,7 +72,7 @@ async fn process_stream(
                 error!("error processing tls: {:?} from source: {}", err, source);
             }
         }
-        Err(err) => error!("error handshaking: {:?} from source: {}", err, source),
+        Err(err) => error!("error handshaking: {:?} from source: {}", err, source)
     }
 }
 const HASH_STR_LEN: usize = 56;
@@ -145,37 +114,27 @@ const HASH_STR_LEN: usize = 56;
 /// ```
 pub struct UdpAssociateHeader {
     pub addr: Address,
-    pub payload_len: u16,
+    pub payload_len: u16
 }
 
 impl UdpAssociateHeader {
     #[inline]
     pub fn new(addr: &Address, payload_len: usize) -> Self {
-        Self {
-            addr: addr.clone(),
-            payload_len: payload_len as u16,
-        }
+        Self { addr: addr.clone(), payload_len: payload_len as u16 }
     }
 
     pub async fn read_from<R>(stream: &mut R) -> Result<Self>
-    where
-        R: AsyncRead + Unpin,
-    {
+    where R: AsyncRead + Unpin {
         let addr = Address::read_from_stream(stream).await?;
         let mut buf = [0u8; 2];
         stream.read_exact(&mut buf).await?;
         let len = ((buf[0] as u16) << 8) | (buf[1] as u16);
         stream.read_exact(&mut buf).await?;
-        Ok(Self {
-            addr,
-            payload_len: len,
-        })
+        Ok(Self { addr, payload_len: len })
     }
 
     pub async fn write_to<W>(&self, w: &mut W) -> Result<()>
-    where
-        W: AsyncWrite + Unpin,
-    {
+    where W: AsyncWrite + Unpin {
         let mut buf = Vec::with_capacity(self.addr.serialized_len() + 2 + 1);
         let cursor = &mut buf;
         self.addr.write_to_buf(cursor);
@@ -187,15 +146,8 @@ impl UdpAssociateHeader {
 }
 const CMD_TCP_CONNECT: u8 = 0x01;
 const CMD_UDP_ASSOCIATE: u8 = 0x03;
-async fn redirect_fallback(
-    source: &str,
-    target: &str,
-    tls_stream: TlsStream<TcpStream>,
-    buf: &[u8],
-) -> Result<()> {
-    let mut tcp_stream = TcpStream::connect(target)
-        .await
-        .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+async fn redirect_fallback(source: &str, target: &str, tls_stream: TlsStream<TcpStream>, buf: &[u8]) -> Result<()> {
+    let mut tcp_stream = TcpStream::connect(target).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
 
     debug!("connect to fallback: {}", target);
     tcp_stream.write_all(buf).await?;
@@ -238,27 +190,18 @@ async fn redirect_fallback(
     match res {
         Either::Left((Err(e), _)) => {
             debug!("udp copy to remote closed");
-            Err(anyhow::anyhow!(
-                "tcp proxy copy local to remote error: {:?}",
-                e
-            ))?
+            Err(anyhow::anyhow!("tcp proxy copy local to remote error: {:?}", e))?
         }
         Either::Right((Err(e), _)) => {
             debug!("udp copy to local closed");
-            Err(anyhow::anyhow!(
-                "tcp proxy copy remote to local error: {:?}",
-                e
-            ))?
+            Err(anyhow::anyhow!("tcp proxy copy remote to local error: {:?}", e))?
         }
-        Either::Left((Ok(_), _)) | Either::Right((Ok(_), _)) => (),
+        Either::Left((Ok(_), _)) | Either::Right((Ok(_), _)) => ()
     };
     Ok(())
 }
 async fn proxy(
-    mut tls_stream: TlsStream<TcpStream>,
-    source: String,
-    authenticator: Arc<Vec<String>>,
-    fallback: String,
+    mut tls_stream: TlsStream<TcpStream>, source: String, authenticator: Arc<Vec<String>>, fallback: String
 ) -> Result<()> {
     let mut passwd_buf = [0u8; HASH_STR_LEN];
     let len = tls_stream.read(&mut passwd_buf).await?;
@@ -267,16 +210,13 @@ async fn proxy(
         error!("first packet too short");
         redirect_fallback(&source, &fallback, tls_stream, &passwd_buf).await?;
 
-        return Err(Error::Eor(anyhow::anyhow!("first packet too short")));
+        return Err(Error::Eor(anyhow::anyhow!("first packet too short")))
     }
-    debug!(
-        "received client passwd: {:?}",
-        String::from_utf8_lossy(&passwd_buf).to_string()
-    );
+    debug!("received client passwd: {:?}", String::from_utf8_lossy(&passwd_buf).to_string());
     if !authenticator.contains(&String::from_utf8_lossy(&passwd_buf).to_string()) {
         debug!("authentication failed, dropping connection");
         redirect_fallback(&source, &fallback, tls_stream, &passwd_buf).await?;
-        return Err(Error::Eor(anyhow::anyhow!("authenticate failed")));
+        return Err(Error::Eor(anyhow::anyhow!("authenticate failed")))
     } else {
         debug!("authentication succeeded");
     }
@@ -292,9 +232,8 @@ async fn proxy(
         CMD_TCP_CONNECT => {
             debug!("TcpConnect target addr: {:?}", addr);
 
-            let tcp_stream = TcpStream::connect(addr.to_string())
-                .await
-                .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+            let tcp_stream =
+                TcpStream::connect(addr.to_string()).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
 
             debug!("connect to target: {} from source: {}", addr, source);
 
@@ -336,19 +275,13 @@ async fn proxy(
             match res {
                 Either::Left((Err(e), _)) => {
                     debug!("udp copy to remote closed");
-                    Err(anyhow::anyhow!(
-                        "tcp proxy copy local to remote error: {:?}",
-                        e
-                    ))?
+                    Err(anyhow::anyhow!("tcp proxy copy local to remote error: {:?}", e))?
                 }
                 Either::Right((Err(e), _)) => {
                     debug!("udp copy to local closed");
-                    Err(anyhow::anyhow!(
-                        "tcp proxy copy remote to local error: {:?}",
-                        e
-                    ))?
+                    Err(anyhow::anyhow!("tcp proxy copy remote to local error: {:?}", e))?
                 }
-                Either::Left((Ok(_), _)) | Either::Right((Ok(_), _)) => (),
+                Either::Left((Ok(_), _)) | Either::Right((Ok(_), _)) => ()
             };
             // Ok(RequestHeader::TcpConnect(hash_buf, addr))
         }
@@ -356,13 +289,8 @@ async fn proxy(
             debug!("UdpAssociate target addr: {:?}", addr);
 
             const RELAY_BUFFER_SIZE: usize = 0x4000;
-            let outbound = UdpSocket::bind(SocketAddr::from(SocketAddrV6::new(
-                Ipv6Addr::UNSPECIFIED,
-                0,
-                0,
-                0,
-            )))
-            .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+            let outbound = UdpSocket::bind(SocketAddr::from(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0)))
+                .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
             let (mut tls_stream_reader, mut tls_stream_writer) = tls_stream.split();
 
             let client_to_server = Box::pin(async {
@@ -370,17 +298,12 @@ async fn proxy(
                     let mut buf = [0u8; RELAY_BUFFER_SIZE];
                     let header = UdpAssociateHeader::read_from(&mut tls_stream_reader).await?;
                     if header.payload_len == 0 {
-                        break;
+                        break
                     }
 
-                    tls_stream_reader
-                        .read_exact(&mut buf[..header.payload_len as usize])
-                        .await?;
+                    tls_stream_reader.read_exact(&mut buf[..header.payload_len as usize]).await?;
 
-                    match outbound
-                        .send_to(&buf[..header.payload_len as usize], header.addr.to_string())
-                        .await
-                    {
+                    match outbound.send_to(&buf[..header.payload_len as usize], header.addr.to_string()).await {
                         Ok(n) => {
                             debug!("udp copy to remote: {} bytes", n);
                             // if n == 0 {
@@ -389,7 +312,7 @@ async fn proxy(
                         }
                         Err(e) => {
                             error!("udp send to upstream error: {:?}", e);
-                            break;
+                            break
                         }
                     }
                 }
@@ -399,12 +322,10 @@ async fn proxy(
             let server_to_client = Box::pin(async {
                 let mut buf = [0u8; RELAY_BUFFER_SIZE];
                 loop {
-                    let (len, dst) = outbound
-                        .recv_from(&mut buf)
-                        .await
-                        .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+                    let (len, dst) =
+                        outbound.recv_from(&mut buf).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
                     if len == 0 {
-                        break;
+                        break
                     }
                     let header = UdpAssociateHeader::new(&Address::from(dst), len);
                     header.write_to(&mut tls_stream_writer).await?;
@@ -420,19 +341,13 @@ async fn proxy(
             match res {
                 Either::Left((Err(e), _)) => {
                     debug!("udp copy to remote closed");
-                    Err(anyhow::anyhow!(
-                        "UdpAssociate copy local to remote error: {:?}",
-                        e
-                    ))?
+                    Err(anyhow::anyhow!("UdpAssociate copy local to remote error: {:?}", e))?
                 }
                 Either::Right((Err(e), _)) => {
                     debug!("udp copy to local closed");
-                    Err(anyhow::anyhow!(
-                        "UdpAssociate copy remote to local error: {:?}",
-                        e
-                    ))?
+                    Err(anyhow::anyhow!("UdpAssociate copy remote to local error: {:?}", e))?
                 }
-                Either::Left((Ok(_), _)) | Either::Right((Ok(_), _)) => (),
+                Either::Left((Ok(_), _)) | Either::Right((Ok(_), _)) => ()
             };
 
             // Ok(RequestHeader::UdpAssociate(hash_buf))

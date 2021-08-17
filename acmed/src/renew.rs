@@ -1,16 +1,17 @@
-use crate::acme;
-use crate::chall::Challenge;
-use crate::config::CertConfig;
-use crate::config::Config;
-use crate::errors::*;
-use crate::persist::FilePersist;
+use crate::{
+    acme,
+    chall::Challenge,
+    config::{CertConfig, Config},
+    errors::*,
+    persist::FilePersist
+};
 use std::fs;
 
 fn should_request_cert(
     // args: &RenewArgs,
     config: &Config,
     persist: &FilePersist,
-    cert: &CertConfig,
+    cert: &CertConfig
 ) -> Result<bool> {
     // if args.force_renew {
     //     info!("{:?}: force renewing", cert.name);
@@ -56,29 +57,25 @@ fn renew_cert(
     // args: &RenewArgs,
     config: &Config,
     persist: &FilePersist,
-    cert: &CertConfig,
+    cert: &CertConfig
 ) -> Result<()> {
     let mut challenge = Challenge::new(&config);
 
     if !should_request_cert(&config, &persist, &cert)? {
         debug!("Not requesting a certificate for {:?}", cert.name);
-        return Ok(());
+        return Ok(())
     }
 
     // if args.dry_run || args.hooks_only {
     //     info!("renewing {:?} (dry run)", cert.name);
     // } else {
     info!("renewing {:?}", cert.name);
-    acme::request(
-        persist.clone(),
-        &mut challenge,
-        &acme::Request {
-            account_email: config.acme.acme_email.as_deref(),
-            acme_url: &config.acme.acme_url,
-            primary_name: &cert.name,
-            alt_names: &cert.dns_names,
-        },
-    )
+    acme::request(persist.clone(), &mut challenge, &acme::Request {
+        account_email: config.acme.acme_email.as_deref(),
+        acme_url: &config.acme.acme_url,
+        primary_name: &cert.name,
+        alt_names: &cert.dns_names
+    })
     .with_context(|| anyhow!("Fail to get certificate {:?}", cert.name))?;
     challenge.cleanup()?;
     // }
@@ -100,30 +97,23 @@ fn renew_cert(
 }
 
 fn cleanup_certs(persist: &FilePersist, dry_run: bool) -> Result<()> {
-    let live = persist
-        .list_live_certs()
-        .context("Failed to list live certificates")?;
+    let live = persist.list_live_certs().context("Failed to list live certificates")?;
     for (version, name) in &live {
         debug!("cert used in live: {:?} -> {:?}", name, version);
     }
 
-    let cert_list = persist
-        .list_certs()
-        .context("Failed to list certificates")?;
+    let cert_list = persist.list_certs().context("Failed to list certificates")?;
     for (path, name, cert) in cert_list {
         if cert.days_left() >= 0 {
             debug!("cert {:?} is still valid, keeping it around", name);
         } else {
             if live.contains_key(&name) {
                 debug!("cert {:?} is expired by still live, skipping", name);
-                continue;
+                continue
             }
 
             if dry_run {
-                debug!(
-                    "cert {:?} is expired, would delete but dry run is enabled",
-                    name
-                );
+                debug!("cert {:?} is expired, would delete but dry run is enabled", name);
             } else {
                 info!("cert {:?} is expired, deleting...", name);
                 if let Err(err) = fs::remove_dir_all(&path) {

@@ -9,7 +9,6 @@ edition = "2018"
 [dependencies]
 thiserror = "1.0.24"
 anyhow = "1.0.38"
-glommio = "0.5.0"
 tonic = { version = "0.4" }
 trust-dns-resolver = { version = "0.20"  }
 hyper = { version = "0.13.9", default-features = false }

@@ -1,14 +1,12 @@
 use std::convert::TryFrom;
 
 use async_trait::async_trait;
-use sqlx::error::DatabaseError;
-use sqlx::pool::PoolConnection;
-use sqlx::postgres::PgError;
-use sqlx::{PgConnection, PgPool};
+use sqlx::{error::DatabaseError, pool::PoolConnection, postgres::PgError, PgConnection, PgPool};
 
-use crate::db::model::*;
-use crate::db::Db;
-use crate::error::{ProvideErrorKind, ProvideResult};
+use crate::{
+    db::{model::*, Db},
+    error::{ProvideErrorKind, ProvideResult}
+};
 
 pub async fn connect(db_url: &str) -> sqlx::Result<PgPool> {
     let pool = PgPool::new(db_url).await?;
@@ -21,10 +19,8 @@ impl TryFrom<&PgError> for ProvideErrorKind {
     fn try_from(pg_err: &PgError) -> Result<Self, Self::Error> {
         let provider_err = match pg_err.code().unwrap() {
             "23505" => ProvideErrorKind::UniqueViolation(pg_err.details().unwrap().to_owned()),
-            code if code.starts_with("23") => {
-                ProvideErrorKind::ModelViolation(pg_err.message().to_owned())
-            }
-            _ => return Err(()),
+            code if code.starts_with("23") => ProvideErrorKind::ModelViolation(pg_err.message().to_owned()),
+            _ => return Err(())
         };
 
         Ok(provider_err)
@@ -74,6 +70,7 @@ WHERE user_id = $1
 
         Ok(rec)
     }
+
     async fn get_user_by_token(&mut self, token: &str) -> ProvideResult<UserEntity> {
         let rec = sqlx::query_as!(
             UserEntity,
@@ -89,6 +86,7 @@ WHERE token = $1
 
         Ok(rec)
     }
+
     //     async fn get_user_by_email(&mut self, email: &str) -> ProvideResult<UserEntity> {
     //         let rec = sqlx::query_as!(
     //             UserEntity,

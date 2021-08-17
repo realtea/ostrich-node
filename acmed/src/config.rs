@@ -1,8 +1,7 @@
 // use crate::args::Args;
 use crate::errors::*;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
-use std::path::PathBuf;
+use std::{collections::HashSet, path::PathBuf};
 
 // const LETSENCRYPT: &str = "https://acme-v02.api.letsencrypt.org/directory";
 // const LETSENCRYPT_STAGING: &str = "https://acme-staging-v02.api.letsencrypt.org/directory";
@@ -21,7 +20,7 @@ pub const DEFAULT_CONFIG_PATH: &str = "/home/ostrich/tmp/redirect/acmed.json";
 pub struct AcmeConfig {
     pub acme_email: Option<String>,
     pub acme_url: String,
-    pub renew_if_days_left: i64,
+    pub renew_if_days_left: i64
 }
 
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -31,12 +30,12 @@ pub struct SystemConfig {
     #[serde(default)]
     pub exec: Vec<String>,
     #[serde(default)]
-    pub exec_extra: Vec<String>,
+    pub exec_extra: Vec<String>
 }
 
 #[derive(Debug, PartialEq, Deserialize)]
 pub struct CertConfigFile {
-    cert: CertConfig,
+    cert: CertConfig
 }
 
 // fn load_str<T: DeserializeOwned>(s: &str) -> Result<T> {
@@ -76,24 +75,19 @@ pub struct CertConfig {
     #[serde(default)]
     pub must_staple: bool,
     #[serde(default)]
-    pub exec: Vec<String>,
+    pub exec: Vec<String>
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     pub certs: Vec<CertConfig>,
     pub acme: AcmeConfig,
-    pub system: SystemConfig,
+    pub system: SystemConfig
 }
 
 impl Config {
-    pub fn filter_certs<'a>(
-        &'a self,
-        filter: &'a HashSet<String>,
-    ) -> impl Iterator<Item = &'a CertConfig> {
-        self.certs
-            .iter()
-            .filter(move |cert| filter.is_empty() || filter.contains(&cert.name))
+    pub fn filter_certs<'a>(&'a self, filter: &'a HashSet<String>) -> impl Iterator<Item = &'a CertConfig> {
+        self.certs.iter().filter(move |cert| filter.is_empty() || filter.contains(&cert.name))
     }
 }
 
@@ -109,12 +103,8 @@ pub fn load() -> Result<Config> {
     // let path = &args.config;
 
     settings
-        .merge(config::File::new(
-            DEFAULT_CONFIG_PATH,
-            config::FileFormat::Json,
-        ))
+        .merge(config::File::new(DEFAULT_CONFIG_PATH, config::FileFormat::Json))
         .with_context(|| anyhow!("Failed to load config file {:?}", DEFAULT_CONFIG_PATH))?;
-    //
     // if let Some(acme_email) = args.acme_email {
     //     settings.set("acme.acme_email", acme_email)?;
     // }
@@ -128,9 +118,7 @@ pub fn load() -> Result<Config> {
     //     settings.set("system.chall_dir", chall_dir)?;
     // }
 
-    let config = settings
-        .try_into::<Config>()
-        .context("Failed to parse config")?;
+    let config = settings.try_into::<Config>().context("Failed to parse config")?;
 
     // let certs = load_from_folder("/home/ostrich/tmp/redirect/contrib/confs/certs.d/")?
     //     .into_iter()
@@ -155,20 +143,17 @@ mod tests {
             [cert]
             name = "example.com"
             dns_names = ["example.com", "www.example.com"]
-        "#,
+        "#
         )
         .unwrap();
 
-        assert_eq!(
-            conf,
-            CertConfigFile {
-                cert: CertConfig {
-                    name: "example.com".to_string(),
-                    dns_names: vec!["example.com".to_string(), "www.example.com".to_string(),],
-                    must_staple: false,
-                    exec: vec![],
-                },
+        assert_eq!(conf, CertConfigFile {
+            cert: CertConfig {
+                name: "example.com".to_string(),
+                dns_names: vec!["example.com".to_string(), "www.example.com".to_string(),],
+                must_staple: false,
+                exec: vec![]
             }
-        );
+        });
     }
 }

@@ -42,7 +42,7 @@ pub enum Error {
     #[error("future timeout")]
     TimeoutError(#[from] async_std::future::TimeoutError),
     #[error("Error: {0:?}")]
-    Eor(#[from] anyhow::Error),
+    Eor(#[from] anyhow::Error)
 }
 impl From<NetworkError> for Error {
     fn from(err: NetworkError) -> Error {
@@ -63,7 +63,7 @@ pub enum NetworkError {
     #[error("Resolver errors")]
     ResolverError,
     #[error("Peer not connected")]
-    NotConnected,
+    NotConnected
 }
 
 /// An error returned by a provider
@@ -114,7 +114,7 @@ pub enum ServiceError {
     DataError,
 
     #[error("Sql internal error")]
-    SqlError(#[from] SqliteError),
+    SqlError(#[from] SqliteError)
 }
 // impl From<std::option::NoneError> for ServiceError {
 //     fn from(_: std::option::NoneError) -> ServiceError {
@@ -133,40 +133,39 @@ pub enum ServiceError {
 //     }
 // }
 
-/*impl From<sqlx::Error> for ServiceError {
-    /// Convert a SQLx error into a provider error
-    ///
-    /// For Database errors we attempt to downcast
-    ///
-    /// FIXME(RFC): I have no idea if this is sane
-    fn from(e: sqlx::Error) -> Self {
-        log::debug!("sqlx returned err -- {:#?}", &e);
-        match e {
-            sqlx::Error::RowNotFound => ServiceError::NotFound,
-            sqlx::Error::Database(db_err) => {
-                #[cfg(feature = "postgres")]
-                {
-                    if let Some(pg_err) = db_err.try_downcast_ref::<sqlx::postgres::PgError>() {
-                        if let Ok(provide_err) = ProvideErrorKind::try_from(pg_err) {
-                            return provide_err;
-                        }
-                    }
-                }
-
-                #[cfg(feature = "sqlite")]
-                {
-                    if let Some(sqlite_err) = db_err.try_downcast_ref::<sqlx::sqlite::SqliteError>()
-                    {
-                        let provide_err = ServiceError::from(sqlite_err);
-                        return provide_err;
-
-                    }
-                }
-
-                ServiceError::Provider(sqlx::Error::Database(db_err))
-            }
-            _ => ServiceError::Provider(e),
-        }
-    }
-}
-*/
+// impl From<sqlx::Error> for ServiceError {
+// Convert a SQLx error into a provider error
+//
+// For Database errors we attempt to downcast
+//
+// FIXME(RFC): I have no idea if this is sane
+// fn from(e: sqlx::Error) -> Self {
+// log::debug!("sqlx returned err -- {:#?}", &e);
+// match e {
+// sqlx::Error::RowNotFound => ServiceError::NotFound,
+// sqlx::Error::Database(db_err) => {
+// #[cfg(feature = "postgres")]
+// {
+// if let Some(pg_err) = db_err.try_downcast_ref::<sqlx::postgres::PgError>() {
+// if let Ok(provide_err) = ProvideErrorKind::try_from(pg_err) {
+// return provide_err;
+// }
+// }
+// }
+//
+// #[cfg(feature = "sqlite")]
+// {
+// if let Some(sqlite_err) = db_err.try_downcast_ref::<sqlx::sqlite::SqliteError>()
+// {
+// let provide_err = ServiceError::from(sqlite_err);
+// return provide_err;
+//
+// }
+// }
+//
+// ServiceError::Provider(sqlx::Error::Database(db_err))
+// }
+// _ => ServiceError::Provider(e),
+// }
+// }
+// }

@@ -1,14 +1,13 @@
 use crate::db::Db;
 use async_std::sync::Mutex;
 use serde::{Deserialize, Serialize};
-use sqlx::pool::PoolConnection;
-use sqlx::Sqlite;
+use sqlx::{pool::PoolConnection, Sqlite};
 use std::collections::VecDeque;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct NodeAddress {
     pub ip: String,
-    pub port: u16,
+    pub port: u16
 }
 
 // pub enum Status{
@@ -22,9 +21,8 @@ pub struct Node {
     pub count: usize,
     pub total: usize,
     #[serde(skip_serializing, skip_deserializing)]
-    pub last_update: i64,
-    // #[serde(skip_serializing,skip_deserializing)]
-    // pub status: Status
+    pub last_update: i64 /* #[serde(skip_serializing,skip_deserializing)]
+                          * pub status: Status */
 }
 
 impl PartialEq for Node {
@@ -35,9 +33,8 @@ impl PartialEq for Node {
 
 pub struct State<T> {
     pub(crate) db: T,
-    pub server: Mutex<VecDeque<Node>>,
-    // pub sq: RwLock<BTreeMap<String, usize>>,
-    // pub index: AtomicUsize,
+    pub server: Mutex<VecDeque<Node>> /* pub sq: RwLock<BTreeMap<String, usize>>,
+                                       * pub index: AtomicUsize, */
 }
 
 // impl<T> Deref for Arc<State<T>> {
@@ -55,15 +52,13 @@ pub struct State<T> {
 // }
 
 impl<T> State<T>
-where
-    T: Db<Conn = PoolConnection<Sqlite>>,
+where T: Db<Conn = PoolConnection<Sqlite>>
 {
     pub fn new(state: T) -> Self {
         Self {
             db: state,
             // sq: RwLock::new(BTreeMap::new()),
-            server: Mutex::new(VecDeque::new()),
-            // index: AtomicUsize::new(0),
+            server: Mutex::new(VecDeque::new()) // index: AtomicUsize::new(0),
         }
     }
 

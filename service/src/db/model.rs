@@ -8,7 +8,7 @@ pub type EntityId = i32;
 pub struct UserEntity {
     pub user_id: String,
     pub token: String,
-    pub role: EntityId,
+    pub role: EntityId
 }
 
 #[async_trait]

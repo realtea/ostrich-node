@@ -1,8 +1,10 @@
-use crate::api::{
-    state::State,
-    users::{create_user, get_available_server, update_available_server, User},
+use crate::{
+    api::{
+        state::State,
+        users::{create_user, get_available_server, update_available_server, User}
+    },
+    db::Db
 };
-use crate::db::Db;
 
 use crate::acme::renew::challenge_acme;
 use errors::{Error, Result, ServiceError};
@@ -10,8 +12,7 @@ use hyper::{header, Body, Method, Request, Response, StatusCode};
 use log::warn;
 use serde::{Deserialize, Serialize};
 use serde_repr::*;
-use sqlx::pool::PoolConnection;
-use sqlx::Sqlite;
+use sqlx::{pool::PoolConnection, Sqlite};
 use std::sync::Arc;
 
 // static INTERNAL_SERVER_ERROR: &[u8] = b"Internal Server Error";
@@ -21,12 +22,12 @@ static NOTFOUND: &[u8] = b"Not Found";
 #[derive(Serialize, Deserialize)]
 pub struct ServerAddr {
     pub(crate) ip: String,
-    pub(crate) port: u16,
+    pub(crate) port: u16
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct ServerNode {
-    pub(crate) server: Vec<ServerAddr>,
+    pub(crate) server: Vec<ServerAddr>
 }
 
 #[derive(Serialize_repr, Deserialize_repr, Clone)]
@@ -34,7 +35,7 @@ pub struct ServerNode {
 pub enum Role {
     User,
     Manager,
-    SuperVisor,
+    SuperVisor
 }
 
 #[derive(Serialize, Deserialize)]
@@ -42,52 +43,43 @@ pub enum Role {
 pub enum ResponseEntity {
     User(User),
     Server(ServerNode),
-    Status,
+    Status
 }
 #[derive(Serialize, Deserialize)]
 pub struct ResponseBody<T>
-where
-    T: Serialize,
+where T: Serialize
 {
     pub code: u16,
     pub msg: String,
     pub role: Role,
-    pub ret: Option<T>,
+    pub ret: Option<T>
 }
 pub async fn serve<T>(
     req: Request<Body>,
     // host: String,
-    state: Arc<State<T>>,
+    state: Arc<State<T>>
 ) -> Result<Response<Body>>
 where
-    T: Db<Conn = PoolConnection<Sqlite>>,
+    T: Db<Conn = PoolConnection<Sqlite>>
 {
     // info!("Serving {}{}", host, req.uri());
     match (req.method(), req.uri().path()) {
         (&Method::POST, "/ostrich/admin/mobile/user/create") => {
-            handle_create_user(req, state.clone())
-                .await
-                .map_err(|e| e.into())
+            handle_create_user(req, state.clone()).await.map_err(|e| e.into())
         }
         (&Method::POST, "/ostrich/api/mobile/server/list") => {
-            handle_server_query(req, state.clone())
-                .await
-                .map_err(|e| e.into())
+            handle_server_query(req, state.clone()).await.map_err(|e| e.into())
         }
 
-        (&Method::POST, "/ostrich/api/server/update") => handle_server_update(req, state.clone())
-            .await
-            .map_err(|e| e.into()),
-
-        (&Method::GET, "/.well-known/acme-challenge/") => {
-            handle_acme_challenge(req).await.map_err(|e| e.into())
+        (&Method::POST, "/ostrich/api/server/update") => {
+            handle_server_update(req, state.clone()).await.map_err(|e| e.into())
         }
+
+        (&Method::GET, "/.well-known/acme-challenge/") => handle_acme_challenge(req).await.map_err(|e| e.into()),
 
         _ => {
             // Return 404 not found response.
-            Ok(Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .body(NOTFOUND.into())?)
+            Ok(Response::builder().status(StatusCode::NOT_FOUND).body(NOTFOUND.into())?)
         }
     }
     // Ok(Response::new(Body::from("Hello from hyper!")))
@@ -96,12 +88,7 @@ fn build_response(r: Result<ResponseEntity>) -> Result<Response<Body>> {
     let mut code = 200;
     let content = match r {
         Ok(body) => {
-            let resp = ResponseBody {
-                code,
-                msg: "Success".to_owned(),
-                role: Role::User,
-                ret: Some(body),
-            };
+            let resp = ResponseBody { code, msg: "Success".to_owned(), role: Role::User, ret: Some(body) };
             resp
         }
 
@@ -119,14 +106,9 @@ fn build_response(r: Result<ResponseEntity>) -> Result<Response<Body>> {
                 _ => {
                     warn!("unknown error:{:?}", e);
                     code = 500
-                } //unknown error
+                } // unknown error
             }
-            let resp = ResponseBody {
-                code,
-                msg: "Failed".to_owned(),
-                role: Role::User,
-                ret: None,
-            };
+            let resp = ResponseBody { code, msg: "Failed".to_owned(), role: Role::User, ret: None };
             resp
         }
     };
@@ -140,9 +122,7 @@ fn build_response(r: Result<ResponseEntity>) -> Result<Response<Body>> {
 }
 
 async fn handle_create_user<T>(req: Request<Body>, state: Arc<State<T>>) -> Result<Response<Body>>
-where
-    T: Db<Conn = PoolConnection<Sqlite>>,
-{
+where T: Db<Conn = PoolConnection<Sqlite>> {
     let ret = create_user(req, state.clone()).await;
 
     let response = build_response(ret)?;
@@ -151,9 +131,7 @@ where
 }
 
 async fn handle_server_query<T>(req: Request<Body>, state: Arc<State<T>>) -> Result<Response<Body>>
-where
-    T: Db<Conn = PoolConnection<Sqlite>>,
-{
+where T: Db<Conn = PoolConnection<Sqlite>> {
     let ret = get_available_server(req, state.clone()).await;
 
     let response = build_response(ret)?;
@@ -162,9 +140,7 @@ where
 }
 
 async fn handle_server_update<T>(req: Request<Body>, state: Arc<State<T>>) -> Result<Response<Body>>
-where
-    T: Db<Conn = PoolConnection<Sqlite>>,
-{
+where T: Db<Conn = PoolConnection<Sqlite>> {
     let ret = update_available_server(req, state.clone()).await;
 
     let response = build_response(ret)?;
@@ -174,7 +150,6 @@ where
 
 async fn handle_acme_challenge(req: Request<Body>) -> Result<Response<Body>> {
     challenge_acme(req).await
-    //
     // let response = build_response(ret)?;
     //
     // Ok(response)

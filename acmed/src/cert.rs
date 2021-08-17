@@ -4,7 +4,7 @@ use openssl::x509::X509;
 #[derive(Debug)]
 pub struct CertInfo {
     pub not_before: String,
-    pub expires: time::Tm,
+    pub expires: time::Tm
 }
 
 impl CertInfo {
@@ -23,10 +23,7 @@ impl CertInfo {
 
         // dur.num_days()
 
-        Ok(CertInfo {
-            not_before,
-            expires,
-        })
+        Ok(CertInfo { not_before, expires })
     }
 
     pub fn days_left(&self) -> i64 {

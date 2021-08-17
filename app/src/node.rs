@@ -1,15 +1,12 @@
 // use app::init::service_init;
-use app::init::service_init;
-use app::DEFAULT_FALLBACK_ADDR;
+use app::{init::service_init, DEFAULT_FALLBACK_ADDR};
 use async_tls::TlsAcceptor;
 use clap::{App, Arg};
 use errors::Result;
 use glommio::{CpuSet, Local, LocalExecutorBuilder, LocalExecutorPoolBuilder, Placement};
 use rustls::{NoClientAuth, ServerConfig};
-use std::io;
-use std::sync::Arc;
-use trojan::config::set_config;
-use trojan::{generate_authenticator, load_certs, load_keys, ProxyBuilder};
+use std::{io, sync::Arc};
+use trojan::{config::set_config, generate_authenticator, load_certs, load_keys, ProxyBuilder};
 fn main() -> Result<()> {
     let matches = App::new("ostrich")
         .version("0.1.0")
@@ -20,7 +17,7 @@ fn main() -> Result<()> {
                 .value_name("CONFIG")
                 .about("Specify the config file")
                 .takes_value(true)
-                .required(true),
+                .required(true)
         )
         .get_matches();
 
@@ -36,9 +33,7 @@ fn main() -> Result<()> {
     let key = load_keys(&key)?;
     let verifier = NoClientAuth::new();
     let mut tls_config = ServerConfig::new(verifier);
-    tls_config
-        .set_single_cert(certs, key)
-        .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
+    tls_config.set_single_cert(certs, key).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
 
     let tls_acceptor = TlsAcceptor::from(Arc::new(tls_config));
 
@@ -66,28 +61,27 @@ fn main() -> Result<()> {
     //     Ok(()) as Result<()>
     // })?;
     let ex = LocalExecutorBuilder::new()
-        .spawn(|| async move {
-            service_init(&config).await?;
+        .spawn(|| {
+            async move {
+                service_init(&config).await?;
 
-            println!(" === init completed");
+                println!(" === init completed");
 
-            Ok(()) as Result<()>
+                Ok(()) as Result<()>
+            }
         })
         .unwrap();
 
-    let proxy = ProxyBuilder::new(
-        proxy_addr,
-        tls_acceptor,
-        authenticator,
-        DEFAULT_FALLBACK_ADDR.to_string(),
-    );
+    let proxy = ProxyBuilder::new(proxy_addr, tls_acceptor, authenticator, DEFAULT_FALLBACK_ADDR.to_string());
     LocalExecutorPoolBuilder::new(num_cpus::get())
         .placement(Placement::MaxSpread(CpuSet::online().ok()))
-        .on_all_shards(|| async move {
-            let id = Local::id();
-            println!("Starting executor {}", id);
-            proxy.start().await?;
-            Ok(()) as Result<()>
+        .on_all_shards(|| {
+            async move {
+                let id = Local::id();
+                println!("Starting executor {}", id);
+                proxy.start().await?;
+                Ok(()) as Result<()>
+            }
         })
         .unwrap()
         .join_all();

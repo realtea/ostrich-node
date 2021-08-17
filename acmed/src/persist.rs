@@ -1,28 +1,23 @@
-use crate::cert::CertInfo;
-use crate::config::Config;
-use crate::errors::*;
+use crate::{cert::CertInfo, config::Config, errors::*};
 use acme_micro::Certificate;
-use std::collections::HashMap;
-use std::ffi::OsStr;
-use std::fs;
-use std::fs::{DirEntry, File, OpenOptions};
-use std::io::prelude::*;
-use std::io::ErrorKind;
-use std::os::unix::fs::symlink;
-use std::os::unix::fs::OpenOptionsExt;
-use std::path::Path;
-use std::path::PathBuf;
+use std::{
+    collections::HashMap,
+    ffi::OsStr,
+    fs,
+    fs::{DirEntry, File, OpenOptions},
+    io::{prelude::*, ErrorKind},
+    os::unix::fs::{symlink, OpenOptionsExt},
+    path::{Path, PathBuf}
+};
 
 #[derive(Clone)]
 pub struct FilePersist {
-    path: PathBuf,
+    path: PathBuf
 }
 
 impl FilePersist {
     pub fn new(config: &Config) -> FilePersist {
-        FilePersist {
-            path: PathBuf::from(&config.system.data_dir),
-        }
+        FilePersist { path: PathBuf::from(&config.system.data_dir) }
     }
 
     fn acc_privkey_path(&self) -> PathBuf {
@@ -42,10 +37,7 @@ impl FilePersist {
     fn certstore_entry(entry: &DirEntry) -> Result<(PathBuf, String, CertInfo)> {
         let cert_path = entry.path().join("fullchain");
 
-        let name = entry
-            .file_name()
-            .into_string()
-            .map_err(|_| anyhow!("Filename contains invalid utf8"))?;
+        let name = entry.file_name().into_string().map_err(|_| anyhow!("Filename contains invalid utf8"))?;
 
         let buf = fs::read(cert_path)?;
         let cert = CertInfo::from_pem(&buf)?;
@@ -62,7 +54,7 @@ impl FilePersist {
                 let entry = entry?;
                 match Self::certstore_entry(&entry) {
                     Ok(entry) => certs.push(entry),
-                    Err(err) => error!("Failed to read {:?}: {:#}", entry.path(), err),
+                    Err(err) => error!("Failed to read {:?}: {:#}", entry.path(), err)
                 }
             }
         }
@@ -109,12 +101,7 @@ impl FilePersist {
     pub fn store_acc_privkey(&self, key: &str) -> Result<()> {
         let path = self.acc_privkey_path();
 
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(path)?;
+        let mut file = OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(path)?;
 
         file.write_all(key.as_bytes())?;
         Ok(())
@@ -126,8 +113,7 @@ impl FilePersist {
 
         let path = self.path.join("certs");
         debug!("creating folder: {:?}", path);
-        fs::create_dir_all(&path)
-            .with_context(|| anyhow!("Failed to create folder: {:?}", &path))?;
+        fs::create_dir_all(&path).with_context(|| anyhow!("Failed to create folder: {:?}", &path))?;
 
         let mut i = 0;
         let path = loop {
@@ -145,7 +131,7 @@ impl FilePersist {
                 Err(_) => {
                     err.with_context(|| anyhow!("Failed to create folder: {:?}", &path))?;
                 }
-                Ok(_) => break path,
+                Ok(_) => break path
             }
 
             i += 1;
@@ -178,8 +164,7 @@ impl FilePersist {
 
         info!("marking cert live");
         let live = self.path.join("live");
-        fs::create_dir_all(&live)
-            .with_context(|| anyhow!("Failed to create folder: {:?}", &live))?;
+        fs::create_dir_all(&live).with_context(|| anyhow!("Failed to create folder: {:?}", &live))?;
         let live = live.join(name);
 
         // TODO: this should be atomic (ln -sf)
@@ -187,21 +172,14 @@ impl FilePersist {
         if live.exists() {
             fs::remove_file(&live).context("Failed to delete old symlink")?;
         }
-        symlink(&path, &live)
-            .with_context(|| anyhow!("Failed to create symlink: {:?} -> {:?}", path, live))?;
+        symlink(&path, &live).with_context(|| anyhow!("Failed to create symlink: {:?} -> {:?}", path, live))?;
 
         Ok(())
     }
 }
 
 fn create(path: &Path, mode: u32) -> Result<File> {
-    OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(mode)
-        .open(path)
-        .map_err(Error::from)
+    OpenOptions::new().write(true).create(true).truncate(true).mode(mode).open(path).map_err(Error::from)
 }
 
 fn write(path: &Path, mode: u32, data: &[u8]) -> Result<()> {
@@ -264,7 +242,7 @@ nXq0uZRfAm2kmQ64WusLvkvgpS61J0m70JI2mXdr+epeXwKdWcmnZJ4CCOiSYdv/
 AxdDRttRGfpNyAxuMiyCccwXW2rNfc7EHQ7Myb7f3eE9cE6wLu/JLCCUotgafi08
 aJ6TSPxS0YlSBhKYNbOUI7R8ZbjAJe/vI1IcYYhMaIW0kAzo4nxEmg==
 -----END CERTIFICATE-----
-",
+"
         )
         .unwrap();
         assert_eq!(chain, "");
@@ -360,7 +338,7 @@ X4Po1QYz+3dszkDqMp4fklxBwXRsW10KXzPMTZ+sOPAveyxindmjkW8lGy+QsRlG
 PfZ+G6Z6h7mjem0Y+iWlkYcV4PIWL1iwBi8saCbGS5jN2p8M+X+Q7UNKEkROb3N6
 KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
 -----END CERTIFICATE-----
-",
+"
         )
         .unwrap();
         assert_eq!(
@@ -513,7 +491,7 @@ X4Po1QYz+3dszkDqMp4fklxBwXRsW10KXzPMTZ+sOPAveyxindmjkW8lGy+QsRlG
 PfZ+G6Z6h7mjem0Y+iWlkYcV4PIWL1iwBi8saCbGS5jN2p8M+X+Q7UNKEkROb3N6
 KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
 -----END CERTIFICATE-----
-",
+"
         )
         .unwrap();
 

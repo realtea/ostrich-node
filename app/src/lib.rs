@@ -1,20 +1,22 @@
 #![feature(maybe_uninit_extra)]
-#[macro_use]
-extern crate log;
+#[macro_use] extern crate log;
 pub mod init;
 
 use bytes::BytesMut;
 use command::frame::Frame;
 use errors::{Error, Result, ServiceError};
 use log::LevelFilter;
-use service::api::users::{User, USER_TOKEN_MAX_LEN};
-use service::db::model::{EntityId, ProvideAuthn};
-use service::http::handler::{ResponseBody, ResponseEntity, Role};
-use sqlx::pool::PoolConnection;
-use sqlx::Sqlite;
-use std::collections::HashMap;
-use std::io::Write;
-use std::path::{Path, PathBuf};
+use service::{
+    api::users::{User, USER_TOKEN_MAX_LEN},
+    db::model::{EntityId, ProvideAuthn},
+    http::handler::{ResponseBody, ResponseEntity, Role}
+};
+use sqlx::{pool::PoolConnection, Sqlite};
+use std::{
+    collections::HashMap,
+    io::Write,
+    path::{Path, PathBuf}
+};
 pub const DNS_CACHE_TIMEOUT: u64 = 3 * 60;
 pub const DEFAULT_FALLBACK_ADDR: &str = "127.0.0.1::28780";
 pub const DEFAULT_COMMAND_ADDR: &str = "127.0.0.1:12771";
@@ -22,18 +24,12 @@ const DEFAULT_REGISTER_PORT: u16 = 22751;
 
 pub const DEFAULT_LOG_PATH: &str = "logs";
 pub const DEFAULT_LOG_CLEANUP_INTERVAL: u64 = 259200;
-pub async fn create_cmd_user(
-    mut db: PoolConnection<Sqlite>,
-    token: String,
-    role: EntityId,
-) -> Result<ResponseEntity> {
+pub async fn create_cmd_user(mut db: PoolConnection<Sqlite>, token: String, role: EntityId) -> Result<ResponseEntity> {
     if token.len() > USER_TOKEN_MAX_LEN {
-        return Err(Error::from(ServiceError::IllegalToken));
+        return Err(Error::from(ServiceError::IllegalToken))
     }
 
-    db.create_user(token.clone(), role as i32)
-        .await
-        .map_err(|_| ServiceError::TokenOccupied)?;
+    db.create_user(token.clone(), role as i32).await.map_err(|_| ServiceError::TokenOccupied)?;
 
     let new = ResponseEntity::User(User { token, role });
 
@@ -44,12 +40,7 @@ pub fn build_cmd_response(ret: Result<ResponseEntity>, data: &mut BytesMut) -> R
     let mut code = 200;
     let content = match ret {
         Ok(body) => {
-            let resp = ResponseBody {
-                code,
-                msg: "Success".to_owned(),
-                role: Role::User,
-                ret: Some(body),
-            };
+            let resp = ResponseBody { code, msg: "Success".to_owned(), role: Role::User, ret: Some(body) };
             resp
         }
 
@@ -67,14 +58,9 @@ pub fn build_cmd_response(ret: Result<ResponseEntity>, data: &mut BytesMut) -> R
                 _ => {
                     warn!("unknown error:{:?}", e);
                     code = 500
-                } //unknown error
+                } // unknown error
             }
-            let resp = ResponseBody {
-                code,
-                msg: "Failed".to_owned(),
-                role: Role::User,
-                ret: None,
-            };
+            let resp = ResponseBody { code, msg: "Failed".to_owned(), role: Role::User, ret: None };
             resp
         }
     };
@@ -88,7 +74,7 @@ pub fn build_cmd_response(ret: Result<ResponseEntity>, data: &mut BytesMut) -> R
 }
 
 pub struct LogLevel {
-    pub level: u8,
+    pub level: u8
 }
 // impl From<u8> for LogLevel {
 //     fn from(i: u8) -> LogLevel {
@@ -112,7 +98,7 @@ impl fmt::Display for LogLevel {
             2 => write!(f, "Info"),
             3 => write!(f, "Debug"),
             4 => write!(f, "Trace"),
-            _ => write!(f, "Warn"),
+            _ => write!(f, "Warn")
         }
     }
 }
@@ -161,14 +147,11 @@ pub fn log_cleanup(dir: &Path) -> Result<()> {
             let entry = entry?;
             let path = entry.path();
             if path.is_dir() {
-                continue;
+                continue
             } else {
                 let metadata = fs::metadata(&path)?;
-                let last_modified = metadata
-                    .modified()?
-                    .elapsed()
-                    .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?
-                    .as_secs();
+                let last_modified =
+                    metadata.modified()?.elapsed().map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?.as_secs();
                 files.insert(last_modified, path);
             }
         }
@@ -179,8 +162,8 @@ pub fn log_cleanup(dir: &Path) -> Result<()> {
                 .iter()
                 .filter(|(k, _v)| **k != latest)
                 .map(|(_k, v)| {
-                    let _ = std::fs::remove_file(v)
-                        .map_err(|e| error!("remove file: {:?}, error: {:?}", v.display(), e));
+                    let _ =
+                        std::fs::remove_file(v).map_err(|e| error!("remove file: {:?}, error: {:?}", v.display(), e));
                 })
                 .collect::<Vec<()>>();
         }

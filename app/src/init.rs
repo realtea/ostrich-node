@@ -1,7 +1,6 @@
 #![warn(unused_must_use)]
 use crate::{
-    build_cmd_response, create_cmd_user, log_init, DEFAULT_COMMAND_ADDR, DEFAULT_LOG_PATH,
-    DEFAULT_REGISTER_PORT,
+    build_cmd_response, create_cmd_user, log_init, DEFAULT_COMMAND_ADDR, DEFAULT_LOG_PATH, DEFAULT_REGISTER_PORT
 };
 
 // use async_tls::TlsAcceptor;
@@ -11,28 +10,30 @@ use command::frame::Frame;
 use errors::{Error, Result};
 use log::{error, info, warn};
 use serde_json::Value;
-use service::api::state::{Node, NodeAddress};
-use service::api::users::NODE_EXPIRE;
-use service::db::create_db;
-use service::db::model::EntityId;
-use service::{api::state::State, db, http::hyper::hyper_compat::serve_register};
-use std::net::{Ipv4Addr, SocketAddrV4};
-use std::ops::Sub;
-use std::{env, fs};
+use service::{
+    api::{
+        state::{Node, NodeAddress, State},
+        users::NODE_EXPIRE
+    },
+    db,
+    db::{create_db, model::EntityId},
+    http::hyper::hyper_compat::serve_register
+};
+use std::{
+    env, fs,
+    net::{Ipv4Addr, SocketAddrV4},
+    ops::Sub
+};
 // use std::str::FromStr;
-use std::sync::Arc;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 use trojan::config::Config;
 // use trojan::{load_certs, load_keys};
-use acmed::errors::Context;
-use acmed::sandbox;
-use glommio::net::UdpSocket;
-use glommio::timer::sleep;
-use glommio::Task;
+use acmed::{errors::Context, sandbox};
+use glommio::{net::UdpSocket, timer::sleep, Task};
 use service::http::handler::serve;
 
 pub async fn service_init(config: &Config) -> Result<()> {
-    //init log
+    // init log
     // let exe_path = std::env::current_exe()?;
     let mut tasks = vec![];
     let exe_path = std::env::current_dir()?;
@@ -45,15 +46,12 @@ pub async fn service_init(config: &Config) -> Result<()> {
     let remote_port = config.remote_port;
     // let remote: (&str, u16) = (remote_addr, remote_port);
 
-    //init db path
+    // init db path
     let db_path = config.mysql.as_ref().unwrap().server_addr.to_owned();
     fs::create_dir_all(&db_path)?;
     let db_path = format!("sqlite:{}/ostrich.db", db_path);
 
-    let available_sites = vec![
-        "https://api.ipify.org?format=json",
-        "https://myexternalip.com/json",
-    ];
+    let available_sites = vec!["https://api.ipify.org?format=json", "https://myexternalip.com/json"];
 
     let mut public_ip = String::new();
     for i in 0..available_sites.len() {
@@ -61,12 +59,9 @@ pub async fn service_init(config: &Config) -> Result<()> {
             Ok(mut resp) => {
                 info!("reporting internal {}", resp.status());
 
-                let body: Value = resp
-                    .body_json()
-                    .await
-                    .map_err(|e| Error::Eor(anyhow::anyhow!("{}", e)))?;
+                let body: Value = resp.body_json().await.map_err(|e| Error::Eor(anyhow::anyhow!("{}", e)))?;
                 public_ip = body["ip"].as_str().unwrap().to_string();
-                break;
+                break
                 // return  Ok(ip)
             }
             Err(e) => {
@@ -83,26 +78,17 @@ pub async fn service_init(config: &Config) -> Result<()> {
         || remote_addr == public_ip.as_str()
     {
         info!("server mode");
-        format!(
-            "http://{}:{}{}",
-            "127.0.0.1", DEFAULT_REGISTER_PORT, "/ostrich/api/server/update"
-        )
+        format!("http://{}:{}{}", "127.0.0.1", DEFAULT_REGISTER_PORT, "/ostrich/api/server/update")
     } else {
         info!("client mode");
-        format!(
-            "http://{}:{}{}",
-            remote_addr, remote_port, "/ostrich/api/server/update"
-        )
+        format!("http://{}:{}{}", remote_addr, remote_port, "/ostrich/api/server/update")
     };
     info!("remote_addr: {}", &remote_addr);
     // let mut tasks = Vec::new();
 
     create_db(&db_path).await?;
     info!("after create db");
-    let db = db::sqlite::connect(&db_path)
-        .await
-        .map_err(|e| info!("db connection error: {:?}", e))
-        .unwrap();
+    let db = db::sqlite::connect(&db_path).await.map_err(|e| info!("db connection error: {:?}", e)).unwrap();
     info!("after connect db");
     let mut migrate = db.clone().acquire().await?;
     info!("before migration");
@@ -115,7 +101,7 @@ pub async fn service_init(config: &Config) -> Result<()> {
         created_at DATETIME  NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
-                            "#,
+                            "#
     )
     .execute(&mut migrate)
     .await?;
@@ -128,21 +114,12 @@ pub async fn service_init(config: &Config) -> Result<()> {
             loop {
                 sleep(Duration::from_secs(3 * 60)).await;
 
-                //TODO &
-                let addr = NodeAddress {
-                    ip: host.clone(),
-                    port,
-                };
+                // TODO &
+                let addr = NodeAddress { ip: host.clone(), port };
                 let total = 50;
-                let node = Node {
-                    addr,
-                    count: 0,
-                    total,
-                    last_update: chrono::Utc::now().timestamp(),
-                };
+                let node = Node { addr, count: 0, total, last_update: chrono::Utc::now().timestamp() };
                 info!("reporting node: {:?}", node);
-                let body = serde_json::to_vec(&node)
-                    .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+                let body = serde_json::to_vec(&node).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
                 // Create a request.
 
                 match surf::post(&remote_addr)
@@ -160,7 +137,7 @@ pub async fn service_init(config: &Config) -> Result<()> {
             }
             // Ok(()) as Result<()>
         })
-        .detach(),
+        .detach()
     );
 
     // spawn(async move {
@@ -187,7 +164,7 @@ pub async fn service_init(config: &Config) -> Result<()> {
             serve_register(socket, serve, state).await?;
             Ok(()) as Result<()>
         })
-        .detach(),
+        .detach()
     );
 
     tasks.push(
@@ -200,7 +177,7 @@ pub async fn service_init(config: &Config) -> Result<()> {
 
                 if len == 0 {
                     drop(nodes);
-                    continue;
+                    continue
                 }
                 for _i in 0..len {
                     if let Some(node) = nodes.pop_front() {
@@ -213,22 +190,18 @@ pub async fn service_init(config: &Config) -> Result<()> {
             }
             // Ok(()) as Result<()>
         })
-        .detach(),
+        .detach()
     );
 
     tasks.push(
         Task::<Result<()>>::local(async move {
-            let socket = UdpSocket::bind(DEFAULT_COMMAND_ADDR)
-                .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+            let socket = UdpSocket::bind(DEFAULT_COMMAND_ADDR).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
             let mut buf = vec![0u8; 1024];
 
-            info!("Listening on {}", socket.local_addr().unwrap()); //TODO
+            info!("Listening on {}", socket.local_addr().unwrap()); // TODO
 
             loop {
-                let (n, peer) = socket
-                    .recv_from(&mut buf)
-                    .await
-                    .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+                let (n, peer) = socket.recv_from(&mut buf).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
 
                 let mut data = BytesMut::new();
                 data.extend_from_slice(&buf[..n]);
@@ -240,10 +213,7 @@ pub async fn service_init(config: &Config) -> Result<()> {
 
                         Frame::unpack_msg_frame(&mut data)?;
                         //
-                        info!(
-                            "{:?}",
-                            String::from_utf8(data.to_ascii_lowercase().to_vec())
-                        );
+                        info!("{:?}", String::from_utf8(data.to_ascii_lowercase().to_vec()));
                         let token = String::from_utf8(data.to_ascii_lowercase().to_vec())
                             .map_err(|e| Error::Eor(anyhow::anyhow!("{}", e)))?;
                         // cmd_db.create_user(token,1 as EntityId).await.unwrap();
@@ -264,7 +234,7 @@ pub async fn service_init(config: &Config) -> Result<()> {
             }
             // Ok(()) as Result<()>
         })
-        .detach(),
+        .detach()
     );
 
     tasks.push(
@@ -278,7 +248,7 @@ pub async fn service_init(config: &Config) -> Result<()> {
             }
             // Ok(()) as Result<()>
         })
-        .detach(),
+        .detach()
     );
 
     for task in tasks {
