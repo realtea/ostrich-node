@@ -1,7 +1,7 @@
 #![warn(unused_must_use)]
 use crate::{
-    build_cmd_response, create_cmd_user, log_init, DEFAULT_COMMAND_ADDR,
-     DEFAULT_LOG_PATH, DEFAULT_REGISTER_PORT,
+    build_cmd_response, create_cmd_user, log_init, DEFAULT_COMMAND_ADDR, DEFAULT_LOG_PATH,
+    DEFAULT_REGISTER_PORT,
 };
 
 // use async_tls::TlsAcceptor;
@@ -9,29 +9,29 @@ use bytes::BytesMut;
 // use clap::{App, Arg};
 use command::frame::Frame;
 use errors::{Error, Result};
-use log::{info, warn,error};
+use log::{error, info, warn};
 use serde_json::Value;
 use service::api::state::{Node, NodeAddress};
 use service::api::users::NODE_EXPIRE;
 use service::db::create_db;
 use service::db::model::EntityId;
 use service::{api::state::State, db, http::hyper::hyper_compat::serve_register};
-use std::{fs, env};
-use std::net::{Ipv4Addr,  SocketAddrV4};
+use std::net::{Ipv4Addr, SocketAddrV4};
 use std::ops::Sub;
+use std::{env, fs};
 // use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use trojan::config::Config;
 // use trojan::{load_certs, load_keys};
-use service::http::handler::serve;
-use glommio::Task;
-use glommio::timer::{sleep};
-use glommio::net::UdpSocket;
-use acmed::sandbox;
 use acmed::errors::Context;
+use acmed::sandbox;
+use glommio::net::UdpSocket;
+use glommio::timer::sleep;
+use glommio::Task;
+use service::http::handler::serve;
 
-pub async fn service_init(config: &Config) ->Result<()> {
+pub async fn service_init(config: &Config) -> Result<()> {
     //init log
     // let exe_path = std::env::current_exe()?;
     let mut tasks = vec![];
@@ -61,7 +61,10 @@ pub async fn service_init(config: &Config) ->Result<()> {
             Ok(mut resp) => {
                 info!("reporting internal {}", resp.status());
 
-                let body: Value = resp.body_json().await.map_err(|e|Error::Eor(anyhow::anyhow!("{}",e)))?;
+                let body: Value = resp
+                    .body_json()
+                    .await
+                    .map_err(|e| Error::Eor(anyhow::anyhow!("{}", e)))?;
                 public_ip = body["ip"].as_str().unwrap().to_string();
                 break;
                 // return  Ok(ip)
@@ -120,43 +123,45 @@ pub async fn service_init(config: &Config) ->Result<()> {
 
     let host = config.local_addr.to_owned();
     let port = config.local_port;
-    tasks.push(Task::<Result<()>>::local(async move {
-        loop {
+    tasks.push(
+        Task::<Result<()>>::local(async move {
+            loop {
+                sleep(Duration::from_secs(3 * 60)).await;
 
-            sleep(Duration::from_secs(3 * 60)).await;
+                //TODO &
+                let addr = NodeAddress {
+                    ip: host.clone(),
+                    port,
+                };
+                let total = 50;
+                let node = Node {
+                    addr,
+                    count: 0,
+                    total,
+                    last_update: chrono::Utc::now().timestamp(),
+                };
+                info!("reporting node: {:?}", node);
+                let body = serde_json::to_vec(&node)
+                    .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+                // Create a request.
 
-            //TODO &
-            let addr = NodeAddress {
-                ip: host.clone(),
-                port,
-            };
-            let total = 50;
-            let node = Node {
-                addr,
-                count: 0,
-                total,
-                last_update: chrono::Utc::now().timestamp(),
-            };
-            info!("reporting node: {:?}", node);
-            let body = serde_json::to_vec(&node)
-                .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
-            // Create a request.
-
-            match surf::post(&remote_addr)
-                .body(body)
-                // .timeout(Duration::from_secs(60))
-                .await
-            {
-                Ok(_resp) => {
-                    info!("reporting internal");
-                }
-                Err(e) => {
-                    info!("{:?}", e);
+                match surf::post(&remote_addr)
+                    .body(body)
+                    // .timeout(Duration::from_secs(60))
+                    .await
+                {
+                    Ok(_resp) => {
+                        info!("reporting internal");
+                    }
+                    Err(e) => {
+                        info!("{:?}", e);
+                    }
                 }
             }
-        }
-        // Ok(()) as Result<()>
-    }).detach(),);
+            // Ok(()) as Result<()>
+        })
+        .detach(),
+    );
 
     // spawn(async move {
     //     loop {
@@ -168,97 +173,116 @@ pub async fn service_init(config: &Config) ->Result<()> {
     let state = Arc::new(State::new(register_db));
     let cleanup_state = state.clone();
 
-    let acmed_config = acmed::config::load().map_err(|e| {error!("loading acme config: {:?}",e);e})?;
+    let acmed_config = acmed::config::load().map_err(|e| {
+        error!("loading acme config: {:?}", e);
+        e
+    })?;
     // let register_task =
     let chall_dir = acmed_config.system.chall_dir.clone();
-    tasks.push(Task::<Result<()>>::local(async move {
-        env::set_current_dir(&chall_dir)?;
-        sandbox::init().context("Failed to drop privileges")?;
-        let socket = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), DEFAULT_REGISTER_PORT);
-        serve_register(socket, serve,state).await?;
-        Ok(()) as Result<()>
-    }).detach());
+    tasks.push(
+        Task::<Result<()>>::local(async move {
+            env::set_current_dir(&chall_dir)?;
+            sandbox::init().context("Failed to drop privileges")?;
+            let socket = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), DEFAULT_REGISTER_PORT);
+            serve_register(socket, serve, state).await?;
+            Ok(()) as Result<()>
+        })
+        .detach(),
+    );
 
-    tasks.push(Task::<Result<()>>::local(async move {
-        loop {
-            sleep(Duration::from_secs(5 * 60)).await;
-            let mut nodes = cleanup_state.server.lock().await;
-            let now = chrono::Utc::now().timestamp();
-            let len = nodes.len();
+    tasks.push(
+        Task::<Result<()>>::local(async move {
+            loop {
+                sleep(Duration::from_secs(5 * 60)).await;
+                let mut nodes = cleanup_state.server.lock().await;
+                let now = chrono::Utc::now().timestamp();
+                let len = nodes.len();
 
-            if len == 0 {
-                drop(nodes);
-                continue;
-            }
-            for _i in 0..len {
-                if let Some(node) = nodes.pop_front(){
-                    if now.sub(node.last_update) < NODE_EXPIRE {
-                        nodes.push_back(node);
+                if len == 0 {
+                    drop(nodes);
+                    continue;
+                }
+                for _i in 0..len {
+                    if let Some(node) = nodes.pop_front() {
+                        if now.sub(node.last_update) < NODE_EXPIRE {
+                            nodes.push_back(node);
+                        }
                     }
                 }
+                drop(nodes);
             }
-            drop(nodes);
-        }
-        // Ok(()) as Result<()>
-    }).detach());
+            // Ok(()) as Result<()>
+        })
+        .detach(),
+    );
 
-    tasks.push(Task::<Result<()>>::local(async move {
-        let socket = UdpSocket::bind(DEFAULT_COMMAND_ADDR).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
-        let mut buf = vec![0u8; 1024];
+    tasks.push(
+        Task::<Result<()>>::local(async move {
+            let socket = UdpSocket::bind(DEFAULT_COMMAND_ADDR)
+                .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+            let mut buf = vec![0u8; 1024];
 
-        info!("Listening on {}", socket.local_addr().unwrap());//TODO
+            info!("Listening on {}", socket.local_addr().unwrap()); //TODO
 
-        loop {
-            let (n, peer) = socket.recv_from(&mut buf).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+            loop {
+                let (n, peer) = socket
+                    .recv_from(&mut buf)
+                    .await
+                    .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
 
-            let mut data = BytesMut::new();
-            data.extend_from_slice(&buf[..n]);
+                let mut data = BytesMut::new();
+                data.extend_from_slice(&buf[..n]);
 
-            match Frame::get_frame_type(&data.as_ref()) {
-                Frame::CreateUserRequest => {
-                    info!("CreateUserRequest");
-                    let cmd_db = db.acquire().await?;
+                match Frame::get_frame_type(&data.as_ref()) {
+                    Frame::CreateUserRequest => {
+                        info!("CreateUserRequest");
+                        let cmd_db = db.acquire().await?;
 
-                    Frame::unpack_msg_frame(&mut data)?;
-                    //
-                    info!(
-                        "{:?}",
-                        String::from_utf8(data.to_ascii_lowercase().to_vec())
-                    );
-                    let token = String::from_utf8(data.to_ascii_lowercase().to_vec()).map_err(|e|Error::Eor(anyhow::anyhow!("{}",e)))?;
-                    // cmd_db.create_user(token,1 as EntityId).await.unwrap();
+                        Frame::unpack_msg_frame(&mut data)?;
+                        //
+                        info!(
+                            "{:?}",
+                            String::from_utf8(data.to_ascii_lowercase().to_vec())
+                        );
+                        let token = String::from_utf8(data.to_ascii_lowercase().to_vec())
+                            .map_err(|e| Error::Eor(anyhow::anyhow!("{}", e)))?;
+                        // cmd_db.create_user(token,1 as EntityId).await.unwrap();
 
-                    let ret = create_cmd_user(cmd_db, token, 1 as EntityId).await;
-                    let mut resp = BytesMut::new();
-                    build_cmd_response(ret, &mut resp)?;
+                        let ret = create_cmd_user(cmd_db, token, 1 as EntityId).await;
+                        let mut resp = BytesMut::new();
+                        build_cmd_response(ret, &mut resp)?;
 
-                    let sent = socket.send_to(resp.as_ref(), &peer).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
-                    info!("Sent {} out of {} bytes to {}", sent, n, peer);
+                        let sent = socket
+                            .send_to(resp.as_ref(), &peer)
+                            .await
+                            .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+                        info!("Sent {} out of {} bytes to {}", sent, n, peer);
+                    }
+                    Frame::CreateUserResponse => {}
+                    Frame::UnKnown => {}
                 }
-                Frame::CreateUserResponse => {}
-                Frame::UnKnown => {}
             }
-        }
-        // Ok(()) as Result<()>
-    }).detach());
+            // Ok(()) as Result<()>
+        })
+        .detach(),
+    );
 
-    tasks.push(Task::<Result<()>>::local(async move {
-        // let config = acmed::config::load().map_err(|e| {error!("loading acme config: {:?}",e);e})?;
-        debug!("Loaded runtime config: {:?}", &acmed_config);
-        sleep(Duration::from_secs(7)).await;
-        loop {
-            acmed::renew::run(&acmed_config)?;
-            sleep(Duration::from_secs(604800)).await;
-        }
-        // Ok(()) as Result<()>
-    }).detach());
-
-
-
+    tasks.push(
+        Task::<Result<()>>::local(async move {
+            // let config = acmed::config::load().map_err(|e| {error!("loading acme config: {:?}",e);e})?;
+            debug!("Loaded runtime config: {:?}", &acmed_config);
+            sleep(Duration::from_secs(7)).await;
+            loop {
+                acmed::renew::run(&acmed_config)?;
+                sleep(Duration::from_secs(604800)).await;
+            }
+            // Ok(()) as Result<()>
+        })
+        .detach(),
+    );
 
     for task in tasks {
         task.await.unwrap()?;
     }
     Ok(())
 }
-

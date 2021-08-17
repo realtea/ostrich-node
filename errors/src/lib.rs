@@ -1,8 +1,8 @@
 // #![feature(try_trait)]
 
-use thiserror::Error;
 use sqlx::sqlite::SqliteError;
 use std::io;
+use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

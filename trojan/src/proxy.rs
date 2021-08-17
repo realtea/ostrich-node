@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use glommio::{
     // enclose,
-    net::{TcpListener, TcpStream,UdpSocket},
+    net::{TcpListener, TcpStream, UdpSocket},
     // sync::Semaphore,
     Local,
     // Task,
@@ -49,7 +49,8 @@ impl ProxyBuilder {
     }
 
     pub async fn start(self) -> Result<()> {
-        let listener = TcpListener::bind(&self.addr).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+        let listener =
+            TcpListener::bind(&self.addr).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
         info!("proxy started at: {}", self.addr);
         let mut incoming = listener.incoming();
 
@@ -64,16 +65,17 @@ impl ProxyBuilder {
             let shared_authenticator = Arc::new(self.authenticator.clone());
             let acceptor = Arc::new(self.acceptor.clone());
             let fallback = self.fallback.clone();
-            Local::local( async move {
+            Local::local(async move {
                 debug!("new connection test");
                 process_stream(
                     acceptor.clone(),
                     incoming_stream,
                     shared_authenticator.clone(),
-                    fallback.clone()
-                ).await
-                    }).detach();
-
+                    fallback.clone(),
+                )
+                .await
+            })
+            .detach();
         }
         Ok(())
     }
@@ -191,7 +193,9 @@ async fn redirect_fallback(
     tls_stream: TlsStream<TcpStream>,
     buf: &[u8],
 ) -> Result<()> {
-    let mut tcp_stream = TcpStream::connect(target).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+    let mut tcp_stream = TcpStream::connect(target)
+        .await
+        .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
 
     debug!("connect to fallback: {}", target);
     tcp_stream.write_all(buf).await?;
@@ -288,7 +292,9 @@ async fn proxy(
         CMD_TCP_CONNECT => {
             debug!("TcpConnect target addr: {:?}", addr);
 
-            let tcp_stream = TcpStream::connect(addr.to_string()).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+            let tcp_stream = TcpStream::connect(addr.to_string())
+                .await
+                .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
 
             debug!("connect to target: {} from source: {}", addr, source);
 
@@ -355,7 +361,8 @@ async fn proxy(
                 0,
                 0,
                 0,
-            ))).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+            )))
+            .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
             let (mut tls_stream_reader, mut tls_stream_writer) = tls_stream.split();
 
             let client_to_server = Box::pin(async {
@@ -392,7 +399,10 @@ async fn proxy(
             let server_to_client = Box::pin(async {
                 let mut buf = [0u8; RELAY_BUFFER_SIZE];
                 loop {
-                    let (len, dst) = outbound.recv_from(&mut buf).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+                    let (len, dst) = outbound
+                        .recv_from(&mut buf)
+                        .await
+                        .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
                     if len == 0 {
                         break;
                     }

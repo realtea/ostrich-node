@@ -55,7 +55,7 @@ pub enum Cmd {
     Status,
     /// Request new certificates if needed
     Renew(RenewArgs),
-/*    /// Check if the challenges could be completed
+    /*    /// Check if the challenges could be completed
     Check(CheckArgs),
     /// Load the configuration and dump it to stdout as json
     DumpConfig,*/

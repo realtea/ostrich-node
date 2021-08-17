@@ -4,6 +4,7 @@ use crate::api::{
 };
 use crate::db::Db;
 
+use crate::acme::renew::challenge_acme;
 use errors::{Error, Result, ServiceError};
 use hyper::{header, Body, Method, Request, Response, StatusCode};
 use log::warn;
@@ -12,7 +13,6 @@ use serde_repr::*;
 use sqlx::pool::PoolConnection;
 use sqlx::Sqlite;
 use std::sync::Arc;
-use crate::acme::renew::challenge_acme;
 
 // static INTERNAL_SERVER_ERROR: &[u8] = b"Internal Server Error";
 static NOTFOUND: &[u8] = b"Not Found";
@@ -79,9 +79,9 @@ where
             .await
             .map_err(|e| e.into()),
 
-        (&Method::GET, "/.well-known/acme-challenge/") => handle_acme_challenge(req)
-            .await
-            .map_err(|e| e.into()),
+        (&Method::GET, "/.well-known/acme-challenge/") => {
+            handle_acme_challenge(req).await.map_err(|e| e.into())
+        }
 
         _ => {
             // Return 404 not found response.
@@ -172,8 +172,7 @@ where
     Ok(response)
 }
 
-async fn handle_acme_challenge(req: Request<Body>) -> Result<Response<Body>>
-{
+async fn handle_acme_challenge(req: Request<Body>) -> Result<Response<Body>> {
     challenge_acme(req).await
     //
     // let response = build_response(ret)?;

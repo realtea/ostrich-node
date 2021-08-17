@@ -7,6 +7,8 @@ pub mod hyper_compat {
         task::{Context, Poll},
     };
 
+    use crate::api::state::State;
+    use crate::db::Db;
     use glommio::{
         // enclose,
         net::{TcpListener, TcpStream},
@@ -15,29 +17,27 @@ pub mod hyper_compat {
         Task,
     };
     use hyper::{server::conn::Http, Body, Request, Response};
-    use std::{io};
-    use tokio::io::ReadBuf;
-    use std::sync::Arc;
-    use crate::api::state::State;
-    use crate::db::Db;
     use sqlx::pool::PoolConnection;
     use sqlx::Sqlite;
+    use std::io;
+    use std::sync::Arc;
+    use tokio::io::ReadBuf;
     // use crate::http::handler::serve;
-    use log::error;
     use futures_lite::StreamExt;
+    use log::error;
     // use errors::Result;
-    pub async fn serve_register<A, T,S,F,R>(
+    pub async fn serve_register<A, T, S, F, R>(
         addr: A,
         mut service: S,
         // max_connections: usize,
         state: Arc<State<T>>,
     ) -> io::Result<()>
-        where
-            S: FnMut(Request<Body>,Arc<State<T>>) -> F + 'static + Copy,
-            F: Future<Output = Result<Response<Body>, R>> + 'static,
-            R: std::error::Error + 'static + Send + Sync,
-            A: Into<SocketAddr>,
-            T: Send + Sync + 'static + Db<Conn=PoolConnection<Sqlite>>,
+    where
+        S: FnMut(Request<Body>, Arc<State<T>>) -> F + 'static + Copy,
+        F: Future<Output = Result<Response<Body>, R>> + 'static,
+        R: std::error::Error + 'static + Send + Sync,
+        A: Into<SocketAddr>,
+        T: Send + Sync + 'static + Db<Conn = PoolConnection<Sqlite>>,
     {
         let listener = TcpListener::bind(addr.into())?;
         // let conn_control = Rc::new(Semaphore::new(max_connections as _));
@@ -62,7 +62,8 @@ pub mod hyper_compat {
                 {
                     error!("Stream from {:?} failed with error {:?}", addr, x);
                 }
-            }).detach();
+            })
+            .detach();
             // }
         }
         Ok(())
@@ -73,9 +74,9 @@ pub mod hyper_compat {
     struct HyperExecutor;
 
     impl<F> hyper::rt::Executor<F> for HyperExecutor
-        where
-            F: Future + 'static,
-            F::Output: 'static,
+    where
+        F: Future + 'static,
+        F::Output: 'static,
     {
         fn execute(&self, fut: F) {
             Task::local(fut).detach();

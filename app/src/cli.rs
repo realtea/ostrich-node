@@ -4,7 +4,7 @@ use async_std::future::timeout;
 use async_std::net::UdpSocket;
 use async_std::task;
 use bytes::BytesMut;
-use clap::{ FromArgMatches, IntoApp};
+use clap::{FromArgMatches, IntoApp};
 use comfy_table::Table;
 use command::frame::Frame;
 use command::{build_cmd, opt::Opt};

@@ -2,7 +2,7 @@
 use crate::errors::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::path::{ PathBuf};
+use std::path::PathBuf;
 
 // const LETSENCRYPT: &str = "https://acme-v02.api.letsencrypt.org/directory";
 // const LETSENCRYPT_STAGING: &str = "https://acme-staging-v02.api.letsencrypt.org/directory";
@@ -109,7 +109,10 @@ pub fn load() -> Result<Config> {
     // let path = &args.config;
 
     settings
-        .merge(config::File::new(DEFAULT_CONFIG_PATH, config::FileFormat::Json))
+        .merge(config::File::new(
+            DEFAULT_CONFIG_PATH,
+            config::FileFormat::Json,
+        ))
         .with_context(|| anyhow!("Failed to load config file {:?}", DEFAULT_CONFIG_PATH))?;
     //
     // if let Some(acme_email) = args.acme_email {

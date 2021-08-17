@@ -2,6 +2,9 @@ use crate::api::state::{Node, State};
 use crate::db::model::{EntityId, ProvideAuthn, UserEntity};
 use crate::db::Db;
 // use bytes::buf::ext::BufExt;
+use crate::http::handler::{ResponseEntity, ServerAddr, ServerNode};
+use errors::{Error, Result, ServiceError};
+use hyper::body::Buf;
 use hyper::{Body, Request};
 use log::info;
 use serde::{Deserialize, Serialize};
@@ -11,9 +14,6 @@ use sqlx::Sqlite;
 use std::default::Default;
 use std::ops::Sub;
 use std::sync::Arc;
-use hyper::body::Buf;
-use crate::http::handler::{ResponseEntity, ServerAddr, ServerNode};
-use errors::{Error, Result, ServiceError};
 
 pub const USER_TOKEN_MAX_LEN: usize = 1024;
 pub const NODE_EXPIRE: i64 = 210; // 3`30``
@@ -112,8 +112,10 @@ pub async fn update_available_server<T>(
 where
     T: Db<Conn = PoolConnection<Sqlite>>,
 {
-    let body = hyper::body::aggregate(req).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;//TODO
-    // Decode as JSON...
+    let body = hyper::body::aggregate(req)
+        .await
+        .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?; //TODO
+                                                               // Decode as JSON...
     let body: Node =
         serde_json::from_reader(body.reader()).map_err(|_| ServiceError::InvalidParams)?;
     info!("received node: {:?}", body);
@@ -181,8 +183,10 @@ where
         let node = node.unwrap();
         if now.sub(node.last_update) < NODE_EXPIRE {
             // Aggregate the body...
-            let whole_body = hyper::body::aggregate(req).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;//TODO
-            // Decode as JSON...
+            let whole_body = hyper::body::aggregate(req)
+                .await
+                .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?; //TODO
+                                                                       // Decode as JSON...
             let body: RequestBody = serde_json::from_reader(whole_body.reader())
                 .map_err(|_| ServiceError::InvalidParams)?;
             // Change the JSON...
@@ -230,8 +234,10 @@ where
         user: NewUser,
     }
     // Aggregate the body...
-    let whole_body = hyper::body::aggregate(req).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;//TODO
-    // Decode as JSON...
+    let whole_body = hyper::body::aggregate(req)
+        .await
+        .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?; //TODO
+                                                               // Decode as JSON...
     let body: RequestBody =
         serde_json::from_reader(whole_body.reader()).map_err(|_| ServiceError::InvalidParams)?;
 

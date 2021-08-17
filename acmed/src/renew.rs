@@ -60,7 +60,7 @@ fn renew_cert(
 ) -> Result<()> {
     let mut challenge = Challenge::new(&config);
 
-    if !should_request_cert( &config, &persist, &cert)? {
+    if !should_request_cert(&config, &persist, &cert)? {
         debug!("Not requesting a certificate for {:?}", cert.name);
         return Ok(());
     }
@@ -68,19 +68,19 @@ fn renew_cert(
     // if args.dry_run || args.hooks_only {
     //     info!("renewing {:?} (dry run)", cert.name);
     // } else {
-        info!("renewing {:?}", cert.name);
-        acme::request(
-            persist.clone(),
-            &mut challenge,
-            &acme::Request {
-                account_email: config.acme.acme_email.as_deref(),
-                acme_url: &config.acme.acme_url,
-                primary_name: &cert.name,
-                alt_names: &cert.dns_names,
-            },
-        )
-        .with_context(|| anyhow!("Fail to get certificate {:?}", cert.name))?;
-        challenge.cleanup()?;
+    info!("renewing {:?}", cert.name);
+    acme::request(
+        persist.clone(),
+        &mut challenge,
+        &acme::Request {
+            account_email: config.acme.acme_email.as_deref(),
+            acme_url: &config.acme.acme_url,
+            primary_name: &cert.name,
+            alt_names: &cert.dns_names,
+        },
+    )
+    .with_context(|| anyhow!("Fail to get certificate {:?}", cert.name))?;
+    challenge.cleanup()?;
     // }
 
     // if !args.skip_restarts {
@@ -141,8 +141,8 @@ pub fn run(config: &Config) -> Result<()> {
 
     // let filter = args.certs.drain(..).collect::<HashSet<_>>();
     // for cert in config.filter_certs(&filter) {
-        for cert in &config.certs {
-        if let Err(err) = renew_cert( config, &persist, cert) {
+    for cert in &config.certs {
+        if let Err(err) = renew_cert(config, &persist, cert) {
             error!("Failed to renew ({:?}): {:#}", cert.name, err);
         }
     }

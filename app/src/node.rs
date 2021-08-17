@@ -1,19 +1,15 @@
 // use app::init::service_init;
+use app::init::service_init;
 use app::DEFAULT_FALLBACK_ADDR;
-
-
 use async_tls::TlsAcceptor;
 use clap::{App, Arg};
-use errors::{Result};
+use errors::Result;
+use glommio::{CpuSet, Local, LocalExecutorBuilder, LocalExecutorPoolBuilder, Placement};
 use rustls::{NoClientAuth, ServerConfig};
 use std::io;
 use std::sync::Arc;
 use trojan::config::set_config;
 use trojan::{generate_authenticator, load_certs, load_keys, ProxyBuilder};
-use glommio::{LocalExecutorPoolBuilder, Placement, CpuSet, Local, LocalExecutorBuilder};
-use app::init::service_init;
-
-
 fn main() -> Result<()> {
     let matches = App::new("ostrich")
         .version("0.1.0")
@@ -69,13 +65,15 @@ fn main() -> Result<()> {
     //     proxy.start().await?;
     //     Ok(()) as Result<()>
     // })?;
-    let ex = LocalExecutorBuilder::new().spawn(|| async move {
-        service_init(&config).await?;
+    let ex = LocalExecutorBuilder::new()
+        .spawn(|| async move {
+            service_init(&config).await?;
 
-        println!(" === init completed");
+            println!(" === init completed");
 
-        Ok(()) as Result<()>
-    }).unwrap();
+            Ok(()) as Result<()>
+        })
+        .unwrap();
 
     let proxy = ProxyBuilder::new(
         proxy_addr,
@@ -90,7 +88,8 @@ fn main() -> Result<()> {
             println!("Starting executor {}", id);
             proxy.start().await?;
             Ok(()) as Result<()>
-        }).unwrap()
+        })
+        .unwrap()
         .join_all();
     ex.join().unwrap();
     Ok(())
