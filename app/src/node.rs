@@ -3,10 +3,12 @@ use app::{init::service_init, DEFAULT_FALLBACK_ADDR};
 use async_tls::TlsAcceptor;
 use clap::{App, Arg};
 use errors::Result;
-use glommio::{CpuSet, Local, LocalExecutorBuilder, LocalExecutorPoolBuilder, Placement};
+use glommio::{timer::sleep, CpuSet, Local, LocalExecutorBuilder, LocalExecutorPoolBuilder, Placement};
+use log::{error, info};
 use rustls::{NoClientAuth, ServerConfig};
-use std::{io, sync::Arc};
+use std::{io, sync::Arc, time::Duration};
 use trojan::{config::set_config, generate_authenticator, load_certs, load_keys, ProxyBuilder};
+
 fn main() -> Result<()> {
     let matches = App::new("ostrich")
         .version("0.1.0")
@@ -60,17 +62,38 @@ fn main() -> Result<()> {
     //     proxy.start().await?;
     //     Ok(()) as Result<()>
     // })?;
+    let acmed_config = acmed::config::load().map_err(|e| {
+        error!("loading acme config: {:?}", e);
+        e
+    })?;
+    let renew_config = acmed_config.clone();
     let ex = LocalExecutorBuilder::new()
-        .spawn(|| {
+        .spawn(move || {
+            let acmed_config = acmed_config.clone();
             async move {
-                service_init(&config).await?;
-
-                println!(" === init completed");
-
+                service_init(&config, &acmed_config).await?;
+                info!(" === init service completed === ");
                 Ok(()) as Result<()>
             }
         })
         .unwrap();
+    futures_lite::future::block_on(async {
+        sleep(Duration::from_secs(7)).await;
+
+        loop {
+            match acmed::renew::run(&renew_config) {
+                Ok(_) => {
+                    info!("tls certification updated");
+                    break
+                }
+                Err(e) => {
+                    error!("update tls certification error: {:?}", e);
+                    sleep(Duration::from_secs(60 * 60)).await;
+                    continue
+                }
+            }
+        }
+    });
 
     let proxy = ProxyBuilder::new(proxy_addr, tls_acceptor, authenticator, DEFAULT_FALLBACK_ADDR.to_string());
     LocalExecutorPoolBuilder::new(num_cpus::get())
@@ -78,7 +101,7 @@ fn main() -> Result<()> {
         .on_all_shards(|| {
             async move {
                 let id = Local::id();
-                println!("Starting executor {}", id);
+                info!("Starting executor {}", id);
                 proxy.start().await?;
                 Ok(()) as Result<()>
             }

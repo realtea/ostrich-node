@@ -36,7 +36,6 @@ impl ProxyBuilder {
         let mut incoming = listener.incoming();
 
         while let Some(Ok(incoming_stream)) = incoming.next().await {
-            debug!("server: got connection from client");
             // spawn(process_stream(
             //     acceptor,
             //     incoming_stream,
@@ -47,7 +46,6 @@ impl ProxyBuilder {
             let acceptor = Arc::new(self.acceptor.clone());
             let fallback = self.fallback.clone();
             Local::local(async move {
-                debug!("new connection test");
                 process_stream(acceptor.clone(), incoming_stream, shared_authenticator.clone(), fallback.clone()).await
             })
             .detach();

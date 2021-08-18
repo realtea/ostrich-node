@@ -8,7 +8,7 @@ use bytes::BytesMut;
 // use clap::{App, Arg};
 use command::frame::Frame;
 use errors::{Error, Result};
-use log::{error, info, warn};
+use log::{info, warn};
 use serde_json::Value;
 use service::{
     api::{
@@ -28,11 +28,11 @@ use std::{
 use std::{sync::Arc, time::Duration};
 use trojan::config::Config;
 // use trojan::{load_certs, load_keys};
-use acmed::{errors::Context, sandbox};
+use acmed::{config::Config as AcmeConfig, errors::Context, sandbox};
 use glommio::{net::UdpSocket, timer::sleep, Task};
 use service::http::handler::serve;
 
-pub async fn service_init(config: &Config) -> Result<()> {
+pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<()> {
     // init log
     // let exe_path = std::env::current_exe()?;
     let mut tasks = vec![];
@@ -150,10 +150,10 @@ pub async fn service_init(config: &Config) -> Result<()> {
     let state = Arc::new(State::new(register_db));
     let cleanup_state = state.clone();
 
-    let acmed_config = acmed::config::load().map_err(|e| {
-        error!("loading acme config: {:?}", e);
-        e
-    })?;
+    // let acmed_config = acmed::config::load().map_err(|e| {
+    //     error!("loading acme config: {:?}", e);
+    //     e
+    // })?;
     // let register_task =
     let chall_dir = acmed_config.system.chall_dir.clone();
     tasks.push(
@@ -237,14 +237,16 @@ pub async fn service_init(config: &Config) -> Result<()> {
         .detach()
     );
 
+    let acmed_config = acmed_config.clone();
     tasks.push(
         Task::<Result<()>>::local(async move {
             // let config = acmed::config::load().map_err(|e| {error!("loading acme config: {:?}",e);e})?;
             debug!("Loaded runtime config: {:?}", &acmed_config);
+
             sleep(Duration::from_secs(7)).await;
             loop {
-                acmed::renew::run(&acmed_config)?;
-                sleep(Duration::from_secs(604800)).await;
+                sleep(Duration::from_secs(604800)).await; // checking every week
+                acmed::renew::run(&acmed_config.clone())?;
             }
             // Ok(()) as Result<()>
         })

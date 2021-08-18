@@ -16,14 +16,14 @@ pub const DEFAULT_CONFIG_PATH: &str = "/home/ostrich/tmp/redirect/acmed.json";
 //     pub system: SystemConfig,
 // }
 
-#[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Default, PartialEq, Serialize, Deserialize, Clone)]
 pub struct AcmeConfig {
     pub acme_email: Option<String>,
     pub acme_url: String,
     pub renew_if_days_left: i64
 }
 
-#[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Default, PartialEq, Serialize, Deserialize, Clone)]
 pub struct SystemConfig {
     pub data_dir: PathBuf,
     pub chall_dir: PathBuf,
@@ -78,7 +78,7 @@ pub struct CertConfig {
     pub exec: Vec<String>
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
     pub certs: Vec<CertConfig>,
     pub acme: AcmeConfig,
