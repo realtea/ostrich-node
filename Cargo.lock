@@ -2427,6 +2427,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "routerify"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c6bb49594c791cadb5ccfa5f36d41b498d40482595c199d10cd318800280bd9"
+dependencies = [
+ "http",
+ "hyper 0.14.11",
+ "lazy_static",
+ "percent-encoding",
+ "regex",
+]
+
+[[package]]
 name = "rustc_version"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2631,6 +2644,7 @@ dependencies = [
  "itertools 0.10.1",
  "log",
  "rand 0.8.4",
+ "routerify",
  "serde",
  "serde_json",
  "serde_repr",

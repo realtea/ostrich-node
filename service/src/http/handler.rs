@@ -9,14 +9,14 @@ use crate::{
 use crate::acme::renew::challenge_acme;
 use errors::{Error, Result, ServiceError};
 use hyper::{header, Body, Method, Request, Response, StatusCode};
-use log::warn;
+use log::{debug,warn};
 use serde::{Deserialize, Serialize};
 use serde_repr::*;
 use sqlx::{pool::PoolConnection, Sqlite};
 use std::sync::Arc;
 
 // static INTERNAL_SERVER_ERROR: &[u8] = b"Internal Server Error";
-static NOTFOUND: &[u8] = b"Not Found";
+static NOTFOUND: &[u8] = b"Res Not Found";
 // static POST_DATA: &str = r#"{"original": "data"}"#;
 
 #[derive(Serialize, Deserialize)]
@@ -62,7 +62,7 @@ pub async fn serve<T>(
 where
     T: Db<Conn = PoolConnection<Sqlite>>
 {
-    // info!("Serving {}{}", host, req.uri());
+    debug!("Serving {}",req.uri());
     match (req.method(), req.uri().path()) {
         (&Method::POST, "/ostrich/admin/mobile/user/create") => {
             handle_create_user(req, state.clone()).await.map_err(|e| e.into())
@@ -75,7 +75,7 @@ where
             handle_server_update(req, state.clone()).await.map_err(|e| e.into())
         }
 
-        (&Method::GET, "/.well-known/acme-challenge/") => handle_acme_challenge(req).await.map_err(|e| e.into()),
+        (&Method::GET, _) if req.uri().path().starts_with("/.well-known/acme-challenge")=> handle_acme_challenge(req).await.map_err(|e| e.into()),
 
         _ => {
             // Return 404 not found response.

@@ -1,17 +1,17 @@
 {
    "certs": [
       {
-         "name": "walkonbits.site",
-         "dns_names": ["walkonbits.site"]
+         "name": "bestyoungman.top",
+         "dns_names": ["bestyoungman.top"]
       }
    ],
    "acme": {
       "acme_url": "https://acme-v02.api.letsencrypt.org/directory",
       "acme_email": "xx@yyfr4.com",
-      "renew_if_days_left": 7
+      "renew_if_days_left": 1
    },
    "system": {
-      "chall_dir": "/home/ostrich/tmp/redirect/",
-      "data_dir": "/home/ostrich/tmp/redirect/"
+      "chall_dir": "/home/snow/tmp/ostrich-node/tmp",
+      "data_dir": "/home/snow/tmp/ostrich-node/tmp"
    }
 }

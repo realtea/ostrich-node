@@ -15,9 +15,9 @@ pub const BAD_REQUEST: &str = r#"<html>
 "#;
 
 pub const NOT_FOUND: &str = r#"<html>
-<head><title>404 Not Found</title></head>
+<head><title>404 Not Found Acmed</title></head>
 <body>
-<center><h1>404 Not Found</h1></center>
+<center><h1>404 Not Found Acmed</h1></center>
 </body>
 </html>
 "#;

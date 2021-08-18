@@ -1,4 +1,3 @@
-// use app::init::service_init;
 use app::{init::service_init, DEFAULT_FALLBACK_ADDR};
 use async_tls::TlsAcceptor;
 use clap::{App, Arg};
@@ -25,20 +24,11 @@ fn main() -> Result<()> {
 
     let config_path = matches.value_of("config").unwrap();
     let config = set_config(config_path)?;
-
+    let local_port = config.local_port;
     let passwd_list = config.password.to_owned();
     let authenticator = generate_authenticator(&passwd_list)?;
-
-    let cert = config.ssl.server().unwrap().cert.as_ref();
-    let key = config.ssl.server().unwrap().key.as_ref();
-    let certs = load_certs(&cert)?;
-    let key = load_keys(&key)?;
-    let verifier = NoClientAuth::new();
-    let mut tls_config = ServerConfig::new(verifier);
-    tls_config.set_single_cert(certs, key).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
-
-    let tls_acceptor = TlsAcceptor::from(Arc::new(tls_config));
-
+    let cert = config.ssl.server().unwrap().cert.to_owned();
+    let key = config.ssl.server().unwrap().key.to_owned();
     // // just for test
     // let test_fut = async {
     //     let mut app = tide::new();
@@ -46,7 +36,6 @@ fn main() -> Result<()> {
     //     app.listen(DEFAULT_FALLBACK_ADDR).await?;
     //     Ok(()) as Result<()>
     // };
-    let proxy_addr = format!("{}:{}", "0.0.0.0", config.local_port);
     // block_on(async {
     //     // just for test
     //     spawn(test_fut);
@@ -77,9 +66,9 @@ fn main() -> Result<()> {
             }
         })
         .unwrap();
-    futures_lite::future::block_on(async {
+    let acme = LocalExecutorBuilder::default().make().unwrap();
+    acme.run(async {
         sleep(Duration::from_secs(7)).await;
-
         loop {
             match acmed::renew::run(&renew_config) {
                 Ok(_) => {
@@ -94,6 +83,15 @@ fn main() -> Result<()> {
             }
         }
     });
+
+
+    let certs = load_certs(&cert.as_ref())?;
+    let key = load_keys(&key.as_ref())?;
+    let verifier = NoClientAuth::new();
+    let mut tls_config = ServerConfig::new(verifier);
+    tls_config.set_single_cert(certs, key).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
+    let tls_acceptor = TlsAcceptor::from(Arc::new(tls_config));
+    let proxy_addr = format!("{}:{}", "0.0.0.0", local_port);
 
     let proxy = ProxyBuilder::new(proxy_addr, tls_acceptor, authenticator, DEFAULT_FALLBACK_ADDR.to_string());
     LocalExecutorPoolBuilder::new(num_cpus::get())

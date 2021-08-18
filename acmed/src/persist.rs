@@ -9,6 +9,7 @@ use std::{
     os::unix::fs::{symlink, OpenOptionsExt},
     path::{Path, PathBuf}
 };
+use crate::config::DEFAULT_CERT_PATH;
 
 #[derive(Clone)]
 pub struct FilePersist {
@@ -108,8 +109,15 @@ impl FilePersist {
     }
 
     pub fn store_cert(&self, name: &str, fullcert: &Certificate) -> Result<()> {
+
         let now = time::now_utc();
         let now = time::strftime("%Y%m%d", &now)?;
+        let cert_path = Path::new(DEFAULT_CERT_PATH);
+        if cert_path.exists(){
+            std::fs::remove_dir_all(cert_path)?;
+        }else {
+            std::fs::create_dir_all(cert_path)?;
+        }
 
         let path = self.path.join("certs");
         debug!("creating folder: {:?}", path);
@@ -143,12 +151,14 @@ impl FilePersist {
         let bundle = format!("{}{}", fullcert.private_key(), cert);
 
         debug!("writing privkey");
-        let privkey_path = path.join("privkey");
+        let privkey_path = path.join("private.key");
         write(&privkey_path, 0o440, fullcert.private_key().as_bytes())?;
+        fs::copy(privkey_path,cert_path.join("private.key"))?;
 
         debug!("writing full cert with intermediates");
-        let fullkey_path = path.join("fullchain");
+        let fullkey_path = path.join("fullchain.cer");
         write(&fullkey_path, 0o444, fullcert.certificate().as_bytes())?;
+        fs::copy(fullkey_path,cert_path.join("fullchain.cer"))?;
 
         debug!("writing chain");
         let chain_path = path.join("chain");
