@@ -133,7 +133,7 @@ impl FilePersist {
             let path = path.join(folder);
             debug!("try atomically claiming folder: {:?}", path);
 
-            let err = fs::create_dir(&path);
+            let err = fs::create_dir_all(&path);
             match err {
                 Err(e) if e.kind() == ErrorKind::AlreadyExists => (),
                 Err(_) => {

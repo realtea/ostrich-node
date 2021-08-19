@@ -11,7 +11,6 @@ edition = "2018"
 sqlx = { version = "0.5" }
 async-std = "1.9.0"
 hyper = { version = "0.14", features = ["full"] }
-routerify = "2"
 tokio = { version = "1" }
 glommio = {version = "0.5.0" }
 futures-lite = "1.11.1"
