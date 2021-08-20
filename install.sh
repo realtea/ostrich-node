@@ -343,10 +343,12 @@ EOF
     systemctl enable ostrich_service.service
     systemctl enable ostrich_node.service
 
-  #  cp ostrich/ostrich_node  /usr/bin
-  #  cp ostrich/ostrich_service  /usr/bin
-  #  chmod +x /usr/bin/ostrich_node
-  #  chmod +x /usr/bin/ostrich_service
+    cp ostrich/ostrich_node  /usr/bin
+    cp ostrich/ostrich_service  /usr/bin
+    cp ostrich/ostrich_cli  /usr/bin
+    chmod +x /usr/bin/ostrich_node
+    chmod +x /usr/bin/ostrich_service
+    chmod ostrich/ostrich_cli  /usr/bin
 
     green "======================================================================"
     green                             "Ostrich已安装完成"

@@ -259,7 +259,7 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
                     error!("failed to restart nginx service");
                     // std::process::exit(1)
                 }
-
+                sleep(Duration::from_secs(7)).await;
                 let mut p = Command::new("systemctl")
                     .arg("restart")
                     .arg("ostrich_node")
