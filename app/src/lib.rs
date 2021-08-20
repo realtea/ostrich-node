@@ -20,7 +20,7 @@ use std::{
 pub const DNS_CACHE_TIMEOUT: u64 = 3 * 60;
 pub const DEFAULT_FALLBACK_ADDR: &str = "127.0.0.1::28780";
 pub const DEFAULT_COMMAND_ADDR: &str = "127.0.0.1:12771";
-const DEFAULT_REGISTER_PORT: u16 = 22751;
+pub const DEFAULT_REGISTER_PORT: u16 = 22751;
 
 pub const DEFAULT_LOG_PATH: &str = "logs";
 pub const DEFAULT_LOG_CLEANUP_INTERVAL: u64 = 259200;

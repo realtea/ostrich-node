@@ -31,6 +31,8 @@ use trojan::config::Config;
 use acmed::{config::Config as AcmeConfig, errors::Context, sandbox};
 use glommio::{net::UdpSocket, timer::sleep, Task};
 use service::http::handler::serve;
+use async_process::Command;
+use std::os::unix::process::ExitStatusExt;
 
 pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<()> {
     // init log
@@ -247,6 +249,26 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
             loop {
                 sleep(Duration::from_secs(604800)).await; // checking every week
                 acmed::renew::run(&acmed_config.clone())?;
+
+                let mut p = Command::new("systemctl")
+                    .arg("restart")
+                    .arg("nginx")
+                    .status()
+                    .await?;
+                if p.signal().is_some(){
+                    error!("failed to restart nginx service");
+                    // std::process::exit(1)
+                }
+
+                let mut p = Command::new("systemctl")
+                    .arg("restart")
+                    .arg("ostrich_node")
+                    .status()
+                    .await?;
+                if p.signal().is_some(){
+                    error!("failed to restart ostrich node service");
+                    // std::process::exit(2)
+                }
             }
             // Ok(()) as Result<()>
         })

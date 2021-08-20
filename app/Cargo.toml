@@ -30,6 +30,10 @@ crc = "2.0.0"
 comfy-table = "3.0.0"
 chrono = "0.4.19"
 surf = "2.2.0"
+async-process = "1.2.0"
+warp = "0.3"
+warp-reverse-proxy = "0.3"
+async-global-executor = {version = "2.0.2",features = ["tokio"] }
 
 trojan = {path = "../trojan"}
 errors = {path = "../errors"}

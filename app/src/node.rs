@@ -1,4 +1,6 @@
-use app::{init::service_init, DEFAULT_FALLBACK_ADDR};
+#![allow(unreachable_code)]
+
+use app::{init::service_init, DEFAULT_FALLBACK_ADDR, DEFAULT_REGISTER_PORT};
 use async_tls::TlsAcceptor;
 use clap::{App, Arg};
 use errors::Result;
@@ -7,6 +9,11 @@ use log::{error, info};
 use rustls::{NoClientAuth, ServerConfig};
 use std::{io, sync::Arc, time::Duration};
 use trojan::{config::set_config, generate_authenticator, load_certs, load_keys, ProxyBuilder};
+use warp_reverse_proxy::reverse_proxy_filter;
+use warp::Filter;
+use async_process::Command;
+use futures::TryFutureExt;
+use std::os::unix::process::ExitStatusExt;
 
 fn main() -> Result<()> {
     let matches = App::new("ostrich")
@@ -51,6 +58,16 @@ fn main() -> Result<()> {
     //     proxy.start().await?;
     //     Ok(()) as Result<()>
     // })?;
+    let upstream_addr = format!("http://127.0.0.1:{}/", DEFAULT_REGISTER_PORT);
+    // Forward request to localhost in other port
+    let app = warp::path!("/.well-known/acme-challenge" / ..).and(
+        reverse_proxy_filter("".to_string(), upstream_addr)
+            .and_then(log_response),
+    );
+    let acme_http = async_global_executor::spawn(async {
+        warp::serve(app).run(([0, 0, 0, 0], 80)).await;
+    });
+
     let acmed_config = acmed::config::load().map_err(|e| {
         error!("loading acme config: {:?}", e);
         e
@@ -82,6 +99,28 @@ fn main() -> Result<()> {
                 }
             }
         }
+        acme_http.cancel().await.map_err(|e| {error!("cancel acme http service error: {:?}", e);e});
+
+        let mut p = Command::new("systemctl")
+            .arg("restart")
+            .arg("nginx")
+            .status()
+            .await?;
+        if p.signal().is_some(){
+            error!("failed to restart nginx service");
+            std::process::exit(1)
+        }
+
+        let mut p = Command::new("systemctl")
+            .arg("restart")
+            .arg("ostrich_node")
+            .status()
+            .await?;
+        if p.signal().is_some(){
+            error!("failed to restart ostrich node service");
+            std::process::exit(2)
+        }
+
     });
 
 
