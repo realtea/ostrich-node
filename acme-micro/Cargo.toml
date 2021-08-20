@@ -1,0 +1,32 @@
+[package]
+name = "acme-micro"
+description = "Library for requesting certificates from an ACME provider (acme-lib fork)."
+license = "MIT"
+repository = "https://github.com/kpcyrd/acme-micro"
+readme = "README.md"
+version = "0.11.0"
+authors = [
+    "Martin Algesten <martin@algesten.se>",
+    "kpcyrd <git@rxv.cc>",
+]
+keywords = ["letsencrypt", "acme"]
+categories = ["web-programming", "api-bindings"]
+edition = "2018"
+
+[dependencies]
+anyhow = "1.0"
+base64 = "0.13"
+lazy_static = "1.4"
+log = "0.4"
+openssl = "0.10"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+time = "0.1"
+ureq = "1"
+
+[dev-dependencies]
+doc-comment = "0.3"
+env_logger = { version = "0.8", default-features = false }
+futures = "0.1.25"
+hyper = "0.12"
+regex = "1.4"

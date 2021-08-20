@@ -250,7 +250,7 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
                 sleep(Duration::from_secs(604800)).await; // checking every week
                 acmed::renew::run(&acmed_config.clone())?;
 
-                let mut p = Command::new("systemctl")
+                let  p = Command::new("systemctl")
                     .arg("restart")
                     .arg("nginx")
                     .status()
@@ -260,7 +260,7 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
                     // std::process::exit(1)
                 }
                 sleep(Duration::from_secs(7)).await;
-                let mut p = Command::new("systemctl")
+                let  p = Command::new("systemctl")
                     .arg("restart")
                     .arg("ostrich_node")
                     .status()

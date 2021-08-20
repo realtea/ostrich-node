@@ -10,6 +10,7 @@ green(){
 red(){
     echo -e "\033[31m\033[01m$1\033[0m"
 }
+working_dir=$(dirname $(readlink -f $0))
 
 #copy from 秋水逸冰 ss scripts
 if [[ -f /etc/redhat-release ]]; then
@@ -119,9 +120,9 @@ events {
 http {
     include       /etc/nginx/mime.types;
     default_type  application/octet-stream;
-    log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
-                      '$status $body_bytes_sent "$http_referer" '
-                      '"$http_user_agent" "$http_x_forwarded_for"';
+    log_format  main  '\$remote_addr - \$remote_user [\$time_local] "\$request" '
+                      '\$status \$body_bytes_sent "\$http_referer" '
+                      '"\$http_user_agent" "\$http_x_forwarded_for"';
     access_log  /var/log/nginx/access.log  main;
     sendfile        on;
     #tcp_nopush     on;
@@ -134,11 +135,11 @@ http {
         root /usr/share/nginx/html;
         index index.php index.html index.htm;
         location /.well-known/acme-challenge/ {
-            proxy_set_header  X-Forwarded-Host $host;
-            proxy_set_header  X-Forwarded-Proto $scheme;
-            proxy_set_header  X-Real-IP  $remote_addr;
-            proxy_set_header  X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header Host $http_host;
+            proxy_set_header  X-Forwarded-Host \$host;
+            proxy_set_header  X-Forwarded-Proto \$scheme;
+            proxy_set_header  X-Real-IP  \$remote_addr;
+            proxy_set_header  X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header Host \$http_host;
             proxy_redirect off;
             expires off;
             sendfile off;
@@ -174,22 +175,22 @@ http {
                 # as directory, then fall back to displaying a 404.
                 #try_files $uri $uri/ =404;
         location / {
-            proxy_set_header  X-Forwarded-Host $host;
-            proxy_set_header  X-Forwarded-Proto $scheme;
-            proxy_set_header  X-Real-IP  $remote_addr;
-            proxy_set_header  X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header Host $http_host;
+            proxy_set_header  X-Forwarded-Host \$host;
+            proxy_set_header  X-Forwarded-Proto \$scheme;
+            proxy_set_header  X-Real-IP  \$remote_addr;
+            proxy_set_header  X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header Host \$http_host;
             proxy_redirect off;
             expires off;
             sendfile off;
             proxy_pass http://127.0.0.1:22751;
         }
         location /ostrich/api/ {
-            proxy_set_header  X-Forwarded-Host $host;
-            proxy_set_header  X-Forwarded-Proto $scheme;
-            proxy_set_header  X-Real-IP  $remote_addr;
-            proxy_set_header  X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header Host $http_host;
+            proxy_set_header  X-Forwarded-Host \$host;
+            proxy_set_header  X-Forwarded-Proto \$scheme;
+            proxy_set_header  X-Real-IP  \$remote_addr;
+            proxy_set_header  X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header Host \$http_host;
             proxy_redirect off;
             expires off;
             sendfile off;
@@ -265,10 +266,12 @@ cat > /etc/ostrich/conf/ostrich.json <<-EOF
       "dhparam": ""
     },
     "tcp": {
-        "no_delay": true,
-        "keep_alive": true,
-        "fast_open": false,
-        "fast_open_qlen": 20
+      "prefer_ipv4": false,
+      "no_delay": true,
+      "keep_alive": true,
+      "reuse_port": false,
+      "fast_open": false,
+      "fast_open_qlen": 20
     },
     "mysql": {
         "enabled": false,
@@ -276,7 +279,10 @@ cat > /etc/ostrich/conf/ostrich.json <<-EOF
         "server_port": 3306,
         "database": "trojan",
         "username": "trojan",
-        "password": ""
+        "password": "",
+        "key": "",
+        "cert": "",
+        "ca": ""
     }
 }
 EOF
@@ -342,13 +348,12 @@ EOF
   #	systemctl start trojan.service
     systemctl enable ostrich_service.service
     systemctl enable ostrich_node.service
-
-    cp ostrich/ostrich_node  /usr/bin
-    cp ostrich/ostrich_service  /usr/bin
-    cp ostrich/ostrich_cli  /usr/bin
+    cp ${working_dir}/ostrich/ostrich_node  /usr/bin
+    cp ${working_dir}/ostrich/ostrich_service  /usr/bin
+    cp ${working_dir}/ostrich/ostrich_cli  /usr/bin
     chmod +x /usr/bin/ostrich_node
     chmod +x /usr/bin/ostrich_service
-    chmod ostrich/ostrich_cli  /usr/bin
+    chmod +x /usr/bin/ostrich_cli
 
     green "======================================================================"
     green                             "Ostrich已安装完成"
@@ -387,15 +392,15 @@ function remove_ostrich(){
 start_menu(){
     clear
     green "===================================="
-    green "           Ostrich 一键安装自动脚本"
+    green "        Ostrich 一键安装自动脚本"
     green "===================================="
     echo
     red   "===================================="
-    yellow "           0. 一键安装 Ostrich"
+    yellow "         0. 一键安装 Ostrich"
     red   "===================================="
-    yellow "           1. 一键卸载 Ostrich"
+    yellow "         1. 一键卸载 Ostrich"
     red   "===================================="
-    yellow "           2. 退出脚本"
+    yellow "         2. 退出脚本"
     red   "===================================="
     echo
     read -p "请输入数字:" num

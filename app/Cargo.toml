@@ -52,7 +52,7 @@ features = ["std","derive"]
 name = "ostrich_node"
 path = "./src/node.rs"
 [[bin]]
-name = "ostrich_servicce"
+name = "ostrich_service"
 path = "./src/service.rs"
 [[bin]]
 name ="ostrich_cli"

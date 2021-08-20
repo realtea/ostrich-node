@@ -1,17 +1,15 @@
-use app::{init::service_init, DEFAULT_FALLBACK_ADDR, DEFAULT_REGISTER_PORT};
-use async_tls::TlsAcceptor;
+use app::{init::service_init,  DEFAULT_REGISTER_PORT};
 use clap::{App, Arg};
 use errors::Result;
-use glommio::{timer::sleep, CpuSet, Local, LocalExecutorBuilder, LocalExecutorPoolBuilder, Placement};
+use glommio::{timer::sleep,LocalExecutorBuilder};
 use log::{error, info};
-use rustls::{NoClientAuth, ServerConfig};
-use std::{io, sync::Arc, time::Duration};
-use trojan::{config::set_config, generate_authenticator, load_certs, load_keys, ProxyBuilder};
+use std::{ time::Duration};
+use trojan::{config::set_config};
 use warp_reverse_proxy::reverse_proxy_filter;
-use warp::Filter;
+use warp::{Filter, http, Reply, Rejection};
 use async_process::Command;
-use futures::TryFutureExt;
 use std::os::unix::process::ExitStatusExt;
+use warp::hyper::body::Bytes;
 
 fn main() ->Result<()>{
     let matches = App::new("ostrich")
@@ -32,7 +30,7 @@ fn main() ->Result<()>{
 
     let upstream_addr = format!("http://127.0.0.1:{}/", DEFAULT_REGISTER_PORT);
     // Forward request to localhost in other port
-    let app = warp::path!("/.well-known/acme-challenge" / ..).and(
+    let app = warp::path!(".well-known" / "acme-challenge" / ..).and(
         reverse_proxy_filter("".to_string(), upstream_addr)
             .and_then(log_response),
     );
@@ -56,7 +54,7 @@ fn main() ->Result<()>{
         })
         .unwrap();
     let acme = LocalExecutorBuilder::default().make().unwrap();
-    acme.run(async {
+    let _ = acme.run(async {
         sleep(Duration::from_secs(7)).await;
         loop {
             match acmed::renew::run(&renew_config) {
@@ -71,9 +69,9 @@ fn main() ->Result<()>{
                 }
             }
         }
-        acme_http.cancel().await.map_err(|e| {error!("cancel acme http service error: {:?}", e);e});
+        acme_http.cancel().await;
 
-        let mut p = Command::new("systemctl")
+        let  p = Command::new("systemctl")
             .arg("restart")
             .arg("nginx")
             .status()
@@ -83,7 +81,7 @@ fn main() ->Result<()>{
             std::process::exit(1)
         }
         sleep(Duration::from_secs(7)).await;
-        let mut p = Command::new("systemctl")
+        let  p = Command::new("systemctl")
             .arg("restart")
             .arg("ostrich_node")
             .status()
@@ -92,8 +90,12 @@ fn main() ->Result<()>{
             error!("failed to restart ostrich node service");
             std::process::exit(2)
         }
-        ex.join().unwrap()
+        ex.join().expect("service executor couldn't join on the associated thread");
+        Ok(()) as Result<()>
     });
     Ok(())
-
+}
+async fn log_response(response: http::Response<Bytes>) -> std::result::Result<impl Reply, Rejection> {
+    info!("{:?}", response);
+    Ok(response)
 }
