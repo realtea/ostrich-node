@@ -36,94 +36,6 @@ fn main() -> Result<()> {
     let authenticator = generate_authenticator(&passwd_list)?;
     let cert = config.ssl.server().unwrap().cert.to_owned();
     let key = config.ssl.server().unwrap().key.to_owned();
-    // // just for test
-    // let test_fut = async {
-    //     let mut app = tide::new();
-    //     app.at("/").get(|_| async { Ok("Hello, world!") });
-    //     app.listen(DEFAULT_FALLBACK_ADDR).await?;
-    //     Ok(()) as Result<()>
-    // };
-    // block_on(async {
-    //     // just for test
-    //     spawn(test_fut);
-    //
-    //     service_init(&config).await?;
-    //
-    //     let proxy = ProxyBuilder::new(
-    //         proxy_addr,
-    //         tls_acceptor,
-    //         authenticator,
-    //         DEFAULT_FALLBACK_ADDR.to_string(),
-    //     );
-    //     proxy.start().await?;
-    //     Ok(()) as Result<()>
-    // })?;
-    let upstream_addr = format!("http://127.0.0.1:{}/", DEFAULT_REGISTER_PORT);
-    // Forward request to localhost in other port
-    let app = warp::path!("/.well-known/acme-challenge" / ..).and(
-        reverse_proxy_filter("".to_string(), upstream_addr)
-            .and_then(log_response),
-    );
-    let acme_http = async_global_executor::spawn(async {
-        warp::serve(app).run(([0, 0, 0, 0], 80)).await;
-    });
-
-    let acmed_config = acmed::config::load().map_err(|e| {
-        error!("loading acme config: {:?}", e);
-        e
-    })?;
-    let renew_config = acmed_config.clone();
-    let ex = LocalExecutorBuilder::new()
-        .spawn(move || {
-            let acmed_config = acmed_config.clone();
-            async move {
-                service_init(&config, &acmed_config).await?;
-                info!(" === init service completed === ");
-                Ok(()) as Result<()>
-            }
-        })
-        .unwrap();
-    let acme = LocalExecutorBuilder::default().make().unwrap();
-    acme.run(async {
-        sleep(Duration::from_secs(7)).await;
-        loop {
-            match acmed::renew::run(&renew_config) {
-                Ok(_) => {
-                    info!("tls certification updated");
-                    break
-                }
-                Err(e) => {
-                    error!("update tls certification error: {:?}", e);
-                    sleep(Duration::from_secs(60 * 60)).await;
-                    continue
-                }
-            }
-        }
-        acme_http.cancel().await.map_err(|e| {error!("cancel acme http service error: {:?}", e);e});
-
-        let mut p = Command::new("systemctl")
-            .arg("restart")
-            .arg("nginx")
-            .status()
-            .await?;
-        if p.signal().is_some(){
-            error!("failed to restart nginx service");
-            std::process::exit(1)
-        }
-        sleep(Duration::from_secs(7)).await;
-        let mut p = Command::new("systemctl")
-            .arg("restart")
-            .arg("ostrich_node")
-            .status()
-            .await?;
-        if p.signal().is_some(){
-            error!("failed to restart ostrich node service");
-            std::process::exit(2)
-        }
-
-    });
-
-
     let certs = load_certs(&cert.as_ref())?;
     let key = load_keys(&key.as_ref())?;
     let verifier = NoClientAuth::new();
@@ -145,6 +57,5 @@ fn main() -> Result<()> {
         })
         .unwrap()
         .join_all();
-    ex.join().unwrap();
     Ok(())
 }

@@ -52,5 +52,8 @@ features = ["std","derive"]
 name = "ostrich_node"
 path = "./src/node.rs"
 [[bin]]
+name = "ostrich_servicce"
+path = "./src/service.rs"
+[[bin]]
 name ="ostrich_cli"
 path = "src/cli.rs"
