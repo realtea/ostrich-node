@@ -35,7 +35,13 @@ fn main() ->Result<()>{
             .and_then(log_response),
     );
     let acme_http = async_global_executor::spawn(async {
+        let  p = Command::new("systemctl")
+            .arg("stop")
+            .arg("nginx")
+            .status()
+            .await?;
         warp::serve(app).run(([0, 0, 0, 0], 80)).await;
+        Ok(()) as Result<()>
     });
 
     let acmed_config = acmed::config::load().map_err(|e| {
@@ -85,15 +91,19 @@ fn main() ->Result<()>{
             std::process::exit(1)
         }
         sleep(Duration::from_secs(7)).await;
-        let  p = Command::new("systemctl")
-            .arg("restart")
-            .arg("ostrich_node")
+        let  p = Command::new("/usr/bin/ostrich_node")
+            .arg("-c")
+            .arg("/etc/ostrich/conf/ostrich.json")
+            .arg(">/dev/null")
+            .arg("2>&1")
+            .arg("&")
             .status()
             .await?;
         if p.signal().is_some(){
             error!("failed to restart ostrich node service");
             std::process::exit(2)
         }
+        info!("init success");
         ex.join().expect("service executor couldn't join on the associated thread");
         Ok(()) as Result<()>
     });

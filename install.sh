@@ -237,8 +237,8 @@ EOF
 cat > /etc/ostrich/conf/ostrich.json <<-EOF
 {
     "run_type": "server",
-    "local_addr": "0.0.0.0",
-    "local_port": 443,
+    "local_addr": "$your_domain",
+    "local_port": 9443,
     "remote_addr": "127.0.0.1",
     "remote_port": 80,
     "password": [
@@ -354,7 +354,7 @@ EOF
     chmod +x /usr/bin/ostrich_node
     chmod +x /usr/bin/ostrich_service
     chmod +x /usr/bin/ostrich_cli
-
+    systemctl start ostrich_service.service
     green "======================================================================"
     green                             "Ostrich已安装完成"
     green "======================================================================"
