@@ -36,7 +36,7 @@ impl FilePersist {
     }
 
     fn certstore_entry(entry: &DirEntry) -> Result<(PathBuf, String, CertInfo)> {
-        let cert_path = entry.path().join("fullchain");
+        let cert_path = entry.path().join("fullchain.cer");
 
         let name = entry.file_name().into_string().map_err(|_| anyhow!("Filename contains invalid utf8"))?;
 
@@ -150,8 +150,8 @@ impl FilePersist {
 
         let bundle = format!("{}{}", fullcert.private_key(), cert);
 
-        debug!("writing privkey");
         let privkey_path = path.join("private.key");
+        debug!("writing privkey,privkey_path: {:?}, cert_path: {:?}",privkey_path,cert_path);
         write(&privkey_path, 0o440, fullcert.private_key().as_bytes())?;
         fs::copy(privkey_path,cert_path.join("private.key"))?;
 

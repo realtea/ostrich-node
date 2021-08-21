@@ -6,7 +6,7 @@ use crate::{
     persist::FilePersist
 };
 use std::fs;
-use errors::{Error,Result};
+use errors::{Result};
 
 fn should_request_cert(
     // args: &RenewArgs,
@@ -76,8 +76,9 @@ fn renew_cert(
         acme_url: &config.acme.acme_url,
         primary_name: &cert.name,
         alt_names: &cert.dns_names
-    })
-    .with_context(|| anyhow!("Fail to get certificate {:?}", cert.name))?;
+    })?;
+    // .with_context(|| anyhow!("Fail to get certificate {:?}", cert.name))
+    //     ?;
     challenge.cleanup()?;
     // }
 

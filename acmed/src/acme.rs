@@ -1,7 +1,7 @@
 use crate::{chall::Challenge, errors::*, persist::FilePersist};
 use acme_micro::{create_p384_key, Directory, DirectoryUrl};
 use std::time::Duration;
-use errors::{Error,Result};
+use errors::{Result};
 
 #[derive(Debug)]
 pub struct Request<'a> {
