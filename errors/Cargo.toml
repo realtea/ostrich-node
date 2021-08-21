@@ -15,7 +15,7 @@ hyper = { version = "0.13.9", default-features = false }
 log = "0.4.14"
 sqlx = { version = "0.5" }
 async-std = "1.9.0"
-
+serde_json = "1.0.66"
 [features]
 default= ["sqlite"]
 sqlite = ["sqlx/sqlite","sqlx/runtime-async-std-rustls"]

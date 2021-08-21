@@ -1,6 +1,6 @@
 use app::{init::service_init,  DEFAULT_REGISTER_PORT};
 use clap::{App, Arg};
-use errors::Result;
+use errors::{Result, Error};
 use glommio::{timer::sleep,LocalExecutorBuilder};
 use log::{error, info};
 use std::{ time::Duration};
@@ -63,6 +63,10 @@ fn main() ->Result<()>{
                     break
                 }
                 Err(e) => {
+                    match e {
+                        Error::AcmeLimited => { break}
+                        _ => {}
+                    }
                     error!("update tls certification error: {:?}", e);
                     sleep(Duration::from_secs(60 * 60)).await;
                     continue

@@ -10,6 +10,7 @@ dependencies = [
  "base64",
  "doc-comment",
  "env_logger",
+ "errors",
  "futures 0.1.31",
  "hyper 0.12.36",
  "lazy_static",
@@ -30,6 +31,7 @@ dependencies = [
  "anyhow",
  "caps",
  "config",
+ "errors",
  "log",
  "openssl",
  "pem",
@@ -1068,6 +1070,7 @@ dependencies = [
  "async-std",
  "hyper 0.13.10",
  "log",
+ "serde_json",
  "sqlx",
  "thiserror",
  "tonic",
@@ -3507,9 +3510,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "1.0.74"
+version = "1.0.75"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1873d832550d4588c3dbc20f01361ab00bfe741048f71e3fecf145a7cc18b29c"
+checksum = "b7f58f7e8eaa0009c5fec437aabf511bd9933e4b2d7407bd05273c01a8906ea7"
 dependencies = [
  "proc-macro2",
  "quote",

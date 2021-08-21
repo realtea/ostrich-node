@@ -24,6 +24,13 @@ pub enum Error {
     #[error("IO errors")]
     IoError(#[from] io::Error),
 
+    #[error("serde json errors")]
+    SerdeJsonError(#[from] serde_json::Error),
+
+    #[error("serde json errors")]
+    Utf8Error(#[from] std::string::FromUtf8Error),
+
+
     #[error("IO errors")]
     TonicError(#[from] tonic::transport::Error),
     #[error("Resolver errors")]
@@ -41,6 +48,8 @@ pub enum Error {
 
     #[error("future timeout")]
     TimeoutError(#[from] async_std::future::TimeoutError),
+    #[error("acme hit limited ")]
+    AcmeLimited,
     #[error("Error: {0:?}")]
     Eor(#[from] anyhow::Error)
 }

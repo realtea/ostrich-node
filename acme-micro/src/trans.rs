@@ -12,7 +12,7 @@ use crate::error::*;
 use crate::jwt::*;
 use crate::req::{req_expect_header, req_handle_error, req_head, req_post};
 use crate::util::base64url;
-
+use errors::{Error,Result};
 /// JWS payload and nonce handling for requests to the API.
 ///
 /// Setup is:
@@ -83,6 +83,11 @@ impl Transport {
             let result = req_handle_error(response);
 
             if let Err(problem) = &result {
+                debug!("problem : {:?}",problem);
+                if problem._type ==  "urn:ietf:params:acme:error:rateLimited"{
+                    debug!("acme hit limit");
+                    return Err(Error::AcmeLimited)
+                }
                 if problem.is_bad_nonce() {
                     // retry the request with a new nonce.
                     debug!("Retrying on bad nonce");
@@ -95,7 +100,7 @@ impl Transport {
                 }
             }
 
-            return Ok(result?);
+            return Ok(result.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?);
         }
     }
 }
@@ -136,7 +141,7 @@ impl NoncePool {
         }
         debug!("Request new nonce");
         let res = req_head(&self.nonce_url);
-        Ok(req_expect_header(&res, "replay-nonce")?)
+        Ok(req_expect_header(&res, "replay-nonce").map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?)
     }
 }
 
@@ -183,7 +188,7 @@ fn jws_with<T: Serialize + ?Sized>(
 
     let to_sign = format!("{}.{}", protected, payload);
     let digest = sha256(to_sign.as_bytes());
-    let sig = EcdsaSig::sign(&digest, key.private_key())?;
+    let sig = EcdsaSig::sign(&digest, key.private_key()).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
     let r = sig.r().to_vec();
     let s = sig.s().to_vec();
 

@@ -10,6 +10,7 @@ use crate::trans::Transport;
 use crate::util::{base64url, read_json};
 use log::error;
 mod akey;
+use errors::{Result,Error};
 
 pub(crate) use self::akey::AcmeKey;
 
@@ -91,9 +92,9 @@ impl Account {
         let new_order_url = &self.inner.api_directory.newOrder;
 
         let res = self.inner.transport.call(new_order_url, &order)?;
-        error!("order res status: {:?}:",res.status());
-        error!("order res error: {:?}:",res.error());
-        let order_url = req_expect_header(&res, "location")?;
+        // println!("order res status: {:?}:",res.status());
+        // println!("order res error: {:?}:",res.error());
+        let order_url = req_expect_header(&res, "location").map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
         let api_order: ApiOrder = read_json(res)?;
 
         let order = Order::new(&self.inner, api_order, order_url);
