@@ -1,4 +1,4 @@
-use crate::{copy::copy, Address};
+use crate::{ Address};
 // use async_std::net::{TcpListener, TcpStream, UdpSocket};
 // use async_std::task::spawn;
 use async_tls::{server::TlsStream, TlsAcceptor};
@@ -17,6 +17,8 @@ use glommio::{
     net::{TcpListener, TcpStream, UdpSocket},
     Local
 };
+use futures_lite::io::copy;
+
 #[derive(Clone)]
 pub struct ProxyBuilder {
     addr: String,
@@ -156,7 +158,7 @@ async fn redirect_fallback(source: &str, target: &str, tls_stream: TlsStream<Tcp
     let s_t = format!("{}->{}", source.to_string(), target.to_string());
     let t_s = format!("{}->{}", target.to_string(), source.to_string());
     let source_to_target_ft = async move {
-        match copy(&mut from_tls_stream, &mut target_sink, s_t.clone()).await {
+        match copy(&mut from_tls_stream, &mut target_sink).await {
             Ok(len) => {
                 debug!("total {} bytes copied from source to target: {}", len, s_t);
             }
@@ -169,7 +171,7 @@ async fn redirect_fallback(source: &str, target: &str, tls_stream: TlsStream<Tcp
     };
 
     let target_to_source_ft = async move {
-        match copy(&mut target_stream, &mut from_tls_sink, t_s.clone()).await {
+        match copy(&mut target_stream, &mut from_tls_sink).await {
             Ok(len) => {
                 debug!("total {} bytes copied from target: {}", len, t_s);
             }
@@ -241,7 +243,7 @@ async fn proxy(
             let s_t = format!("{}->{}", source, addr.to_string());
             let t_s = format!("{}->{}", addr.to_string(), source);
             let source_to_target_ft = async move {
-                match copy(&mut from_tls_stream, &mut target_sink, s_t.clone()).await {
+                match copy(&mut from_tls_stream, &mut target_sink).await {
                     Ok(len) => {
                         debug!("total {} bytes copied from source to target: {}", len, s_t);
                     }
@@ -254,7 +256,7 @@ async fn proxy(
             };
 
             let target_to_source_ft = async move {
-                match copy(&mut target_stream, &mut from_tls_sink, t_s.clone()).await {
+                match copy(&mut target_stream, &mut from_tls_sink).await {
                     Ok(len) => {
                         debug!("total {} bytes copied from target: {}", len, t_s);
                     }

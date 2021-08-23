@@ -31,10 +31,9 @@ use trojan::config::Config;
 use acmed::{config::Config as AcmeConfig, errors::Context, sandbox};
 use glommio::{net::UdpSocket, timer::sleep, Task};
 use service::http::handler::serve;
-use async_process::Command;
-use std::os::unix::process::ExitStatusExt;
+use glommio::channels::shared_channel::SharedSender;
 
-pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<()> {
+pub async fn service_init(config: &Config, acmed_config: &AcmeConfig,sender: SharedSender<bool>) -> Result<()> {
     // init log
     // let exe_path = std::env::current_exe()?;
     let mut tasks = vec![];
@@ -246,29 +245,44 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
             debug!("Loaded runtime config: {:?}", &acmed_config);
 
             sleep(Duration::from_secs(7)).await;
+            let sender = sender.connect().await;
+            // Channel has room for 1 element so this will always succeed
             loop {
                 sleep(Duration::from_secs(604800)).await; // checking every week
-                acmed::renew::run(&acmed_config.clone())?;
+                if acmed::renew::run(&acmed_config.clone()).is_ok(){
+                    sender.try_send(true).map_err(|e|{
+                        error!("send restart signal error: {:?}",e);
+                        Error::Eor(anyhow::anyhow!("{:?}",e))
 
-                let  p = Command::new("systemctl")
-                    .arg("restart")
-                    .arg("nginx")
-                    .status()
-                    .await?;
-                if p.signal().is_some(){
-                    error!("failed to restart nginx service");
-                    // std::process::exit(1)
+                    })?;
                 }
-                sleep(Duration::from_secs(7)).await;
-                let  p = Command::new("systemctl")
-                    .arg("restart")
-                    .arg("ostrich_node")
-                    .status()
-                    .await?;
-                if p.signal().is_some(){
-                    error!("failed to restart ostrich node service");
-                    // std::process::exit(2)
-                }
+                // let  p = Command::new("systemctl")
+                //     .arg("restart")
+                //     .arg("nginx")
+                //     .status()
+                //     .await?;
+                // if p.signal().is_some(){
+                //     error!("failed to restart nginx service");
+                //     // std::process::exit(1)
+                // }
+                // sleep(Duration::from_secs(7)).await;
+                //
+                // let  _p = Command::new("nohup")
+                //     .arg("/usr/bin/ostrich_node")
+                //     .arg("-c")
+                //     .arg("/etc/ostrich/conf/ostrich.json")
+                //     .stdout(Stdio::null())
+                //     .stderr(Stdio::null())
+                //     .spawn()?;
+                    // .arg(">/dev/null")
+                    // .arg("2>&1")
+                    // .arg("&")
+                    // .status()
+                    // .await?;
+                // if p.signal().is_some(){
+                //     error!("failed to restart ostrich node service");
+                //     // std::process::exit(2)
+                // }
             }
             // Ok(()) as Result<()>
         })

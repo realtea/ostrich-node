@@ -19,16 +19,17 @@ pub struct Challenge {
 
 impl Challenge {
     pub fn new(config: &Config) -> Challenge {
-        let chall_dir = Path::new(&config.system.chall_dir);
+        let chall_dir = Path::new(&config.system.chall_dir).join("challs");
         // TODO: consider creating the directory
-        Challenge { path: chall_dir.join("challs"), written: Vec::new() }
+        fs::create_dir_all(&chall_dir).unwrap();
+
+        Challenge { path: chall_dir, written: Vec::new() }
     }
 
     pub fn write(&mut self, token: &str, proof: &str) -> Result<()> {
         if !valid_token(token) {
             bail!("ACME server sent us malicious token")
         }
-        fs::create_dir_all(&self.path)?;
         let path = self.path.join(token);
 
         debug!("Writing challenge proof to {:?}", path);

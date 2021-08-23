@@ -9,7 +9,7 @@ use crate::{
 use crate::http::handler::{ResponseEntity, ServerAddr, ServerNode};
 use errors::{Error, Result, ServiceError};
 use hyper::{body::Buf, Body, Request};
-use log::info;
+use log::{info,error};
 use serde::{Deserialize, Serialize};
 use serde_repr::*;
 use sqlx::{pool::PoolConnection, Sqlite};
@@ -211,7 +211,7 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
     let body: RequestBody = serde_json::from_reader(whole_body.reader()).map_err(|_| ServiceError::InvalidParams)?;
 
     let creator = db.get_user_by_token(body.admin.as_ref()).await.map_err(|e| {
-        println!("get admin error: {:?}", e);
+        error!("get admin error: {:?}", e);
         ServiceError::InvalidToken
     })?;
 

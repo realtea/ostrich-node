@@ -95,6 +95,8 @@ EOF
     ufw disable
     apt-get update
     apt dist-upgrade
+    #tool for killall to restart service
+    apt install psmisc
 fi
 $systemPackage -y install  nginx wget unzip zip curl tar git make libssl-dev build-essential pkg-config >/dev/null 2>&1
 systemctl enable nginx.service

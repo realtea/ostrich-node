@@ -37,7 +37,7 @@ pub async fn challenge_acme(req: Request<Body>) -> Result<Response<Body>> {
         return bad_request()
     }
 
-    let path = Path::new("challs").join(token);
+    let path = Path::new("/etc/ostrich/certs/tmp/challs").join(token);
     debug!("Reading challenge proof: {:?}", path);
     if let Ok(proof) = fs::read(path) {
         // HttpResponse::Ok().body(proof)

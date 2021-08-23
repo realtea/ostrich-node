@@ -1,3 +1,5 @@
+#![allow(unreachable_code)]
+#![allow(unused_variables)]
 use app::{init::service_init,  DEFAULT_REGISTER_PORT};
 use clap::{App, Arg};
 use errors::{Result, Error};
@@ -7,9 +9,10 @@ use std::{ time::Duration};
 use trojan::{config::set_config};
 use warp_reverse_proxy::reverse_proxy_filter;
 use warp::{Filter, http, Reply, Rejection};
-use async_process::Command;
+use async_process::{Command, Stdio};
 use std::os::unix::process::ExitStatusExt;
 use warp::hyper::body::Bytes;
+use glommio::channels::shared_channel;
 
 fn main() ->Result<()>{
     let matches = App::new("ostrich")
@@ -35,7 +38,7 @@ fn main() ->Result<()>{
             .and_then(log_response),
     );
     let acme_http = async_global_executor::spawn(async {
-        let  p = Command::new("systemctl")
+        let  _ = Command::new("systemctl")
             .arg("stop")
             .arg("nginx")
             .status()
@@ -49,11 +52,14 @@ fn main() ->Result<()>{
         e
     })?;
     let renew_config = acmed_config.clone();
+
+    let (sender, receiver) = shared_channel::new_bounded(1);
+
     let ex = LocalExecutorBuilder::new()
         .spawn(move || {
             let acmed_config = acmed_config.clone();
             async move {
-                service_init(&config, &acmed_config).await?;
+                service_init(&config, &acmed_config,sender).await?;
                 info!(" === init service completed === ");
                 Ok(()) as Result<()>
             }
@@ -80,30 +86,37 @@ fn main() ->Result<()>{
             }
         }
         acme_http.cancel().await;
-
-        let  p = Command::new("systemctl")
-            .arg("restart")
-            .arg("nginx")
-            .status()
-            .await?;
-        if p.signal().is_some(){
-            error!("failed to restart nginx service");
-            std::process::exit(1)
-        }
-        sleep(Duration::from_secs(7)).await;
-        let  p = Command::new("/usr/bin/ostrich_node")
-            .arg("-c")
-            .arg("/etc/ostrich/conf/ostrich.json")
-            .arg(">/dev/null")
-            .arg("2>&1")
-            .arg("&")
-            .status()
-            .await?;
-        if p.signal().is_some(){
-            error!("failed to restart ostrich node service");
-            std::process::exit(2)
-        }
-        info!("init success");
+        let receiver = receiver.connect().await;
+       loop{
+           let  p = Command::new("systemctl")
+               .arg("restart")
+               .arg("nginx")
+               .status()
+               .await?;
+           if p.signal().is_some(){
+               error!("failed to restart nginx service");
+               std::process::exit(1)
+           }
+           sleep(Duration::from_secs(7)).await;
+           let mut p = Command::new("nohup")
+               .arg("/usr/bin/ostrich_node")
+               .arg("-c")
+               .arg("/etc/ostrich/conf/ostrich.json")
+               // .arg(">/dev/null")
+               // .arg("2>&1")
+               // .arg("&")
+               .stdout(Stdio::null())
+               .stderr(Stdio::null())
+               .spawn()?;
+           // if p.signal().is_some(){
+           //     error!("failed to restart ostrich node service");
+           //     std::process::exit(2)
+           // }
+           info!("init success");
+           let _ = receiver.recv().await;
+            p.kill()?;
+           info!("restart service");
+       }
         ex.join().expect("service executor couldn't join on the associated thread");
         Ok(()) as Result<()>
     });

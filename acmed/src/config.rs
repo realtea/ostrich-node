@@ -5,7 +5,7 @@ use std::{collections::HashSet, path::PathBuf};
 
 // const LETSENCRYPT: &str = "https://acme-v02.api.letsencrypt.org/directory";
 // const LETSENCRYPT_STAGING: &str = "https://acme-staging-v02.api.letsencrypt.org/directory";
-pub const DEFAULT_RENEW_IF_DAYS_LEFT: i64 = 300;
+// pub const DEFAULT_RENEW_IF_DAYS_LEFT: i64 = 300;
 pub const DEFAULT_CONFIG_PATH: &str = "/etc/ostrich/conf/acmed.json";
 pub const DEFAULT_CERT_PATH: &str = "/etc/ostrich/certs/";
 // #[derive(Debug, PartialEq, Deserialize)]

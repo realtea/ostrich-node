@@ -113,11 +113,11 @@ impl FilePersist {
         let now = time::now_utc();
         let now = time::strftime("%Y%m%d", &now)?;
         let cert_path = Path::new(DEFAULT_CERT_PATH);
-        if cert_path.exists(){
-            std::fs::remove_dir_all(cert_path)?;
-        }else {
+        // if cert_path.exists(){
+        //     std::fs::remove_dir_all(cert_path)?;
+        // }else {
             std::fs::create_dir_all(cert_path)?;
-        }
+        // }
 
         let path = self.path.join("certs");
         debug!("creating folder: {:?}", path);
