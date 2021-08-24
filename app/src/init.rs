@@ -59,7 +59,7 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig, sender: Sh
     for i in 0..available_sites.len() {
         match surf::get(&available_sites[i]).await {
             Ok(mut resp) => {
-                info!("reporting internal {}", resp.status());
+                // info!("reporting internal {}", resp.status());
 
                 let body: Value = resp.body_json().await.map_err(|e| Error::Eor(anyhow::anyhow!("{}", e)))?;
                 public_ip = body["ip"].as_str().unwrap().to_string();
@@ -130,10 +130,10 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig, sender: Sh
                     .await
                 {
                     Ok(_resp) => {
-                        info!("reporting internal");
+                        // info!("reporting internal");
                     }
                     Err(e) => {
-                        info!("{:?}", e);
+                        error!("{:?}", e);
                     }
                 }
             }
@@ -258,7 +258,9 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig, sender: Sh
                 //
                 //     })?;
                 // }
-                sleep(Duration::from_secs(3 * 60)).await; // test
+
+                sleep(Duration::from_secs(604800)).await; // checking every week
+                // sleep(Duration::from_secs(3 * 60)).await; // test
                 match acmed::renew::run(&acmed_config.clone()) {
                     Ok(_) => {
                         info!("tls certs has been renewed");
@@ -279,14 +281,20 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig, sender: Sh
                     }
                 }
                 if reload {
+                    panic!("that is terrible");
                     let p = Command::new("killall").arg("-e").arg("ostrich_node").status().await?;
                     if p.signal().is_some() {
                         error!("failed to killall ostrich node process");
                     }
+                    info!("ostrich node process has been killed");
+                    sleep(Duration::from_secs(10)).await; // test
+
+                    info!("start sending reload signal");
                     sender.try_send(true).map_err(|e| {
                         error!("send reload signal error: {:?}", e);
                         Error::Eor(anyhow::anyhow!("{:?}", e))
                     })?;
+                    info!("reload signal has been sent")
                 }
 
                 // let  p = Command::new("systemctl")

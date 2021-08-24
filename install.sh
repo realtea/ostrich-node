@@ -356,7 +356,7 @@ EOF
     chmod +x /usr/bin/ostrich_node
     chmod +x /usr/bin/ostrich_service
     chmod +x /usr/bin/ostrich_cli
-    systemctl start ostrich_service.service
+#    systemctl start ostrich_service.service
     green "======================================================================"
     green                             "Ostrich已安装完成"
     green "======================================================================"

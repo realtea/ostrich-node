@@ -104,7 +104,7 @@ fn main() -> Result<()> {
             info!("waiting for reload signal");
             let _ = receiver.recv().await;
             info!("reload signal has been received");
-            p.kill()?;
+            // p.kill()?;
             info!("starting to reload service");
         }
         ex.join().expect("service executor couldn't join on the associated thread");
