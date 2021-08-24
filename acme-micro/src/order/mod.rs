@@ -22,7 +22,7 @@ use crate::{
     api::{ApiAuth, ApiEmptyString, ApiFinalize, ApiOrder},
     cert::{create_csr, Certificate},
     error::*,
-    util::{base64url, read_json},
+    util::{base64url, read_json}
 };
 use openssl::pkey::{self, PKey};
 use std::{sync::Arc, thread, time::Duration};
@@ -35,36 +35,24 @@ pub use self::auth::{Auth, Challenge};
 pub(crate) struct Order {
     inner: Arc<AccountInner>,
     api_order: ApiOrder,
-    url: String,
+    url: String
 }
 
 impl Order {
     pub(crate) fn new(inner: &Arc<AccountInner>, api_order: ApiOrder, url: String) -> Self {
-        Order {
-            inner: inner.clone(),
-            api_order,
-            url,
-        }
+        Order { inner: inner.clone(), api_order, url }
     }
 }
 
 /// Helper to refresh an order status (POST-as-GET).
-pub(crate) fn refresh_order(
-    inner: &Arc<AccountInner>,
-    url: String,
-    want_status: &'static str,
-) -> Result<Order> {
+pub(crate) fn refresh_order(inner: &Arc<AccountInner>, url: String, want_status: &'static str) -> Result<Order> {
     let res = inner.transport.call(&url, &ApiEmptyString)?;
 
     // our test rig requires the order to be in `want_status`.
     // api_order_of is different for test compilation
     let api_order = api_order_of(res, want_status)?;
 
-    Ok(Order {
-        inner: inner.clone(),
-        api_order,
-        url,
-    })
+    Ok(Order { inner: inner.clone(), api_order, url })
 }
 
 #[cfg(not(test))]
@@ -100,7 +88,7 @@ fn api_order_of(res: ureq::Response, want_status: &str) -> Result<ApiOrder> {
 /// [confirmed ownership]: ../index.html#domain-ownership
 /// [CSR]: https://en.wikipedia.org/wiki/Certificate_signing_request
 pub struct NewOrder {
-    pub(crate) order: Order,
+    pub(crate) order: Order
 }
 
 impl NewOrder {
@@ -125,11 +113,7 @@ impl NewOrder {
     pub fn confirm_validations(&self) -> Option<CsrOrder> {
         if self.is_validated() {
             Some(CsrOrder {
-                order: Order::new(
-                    &self.order.inner,
-                    self.order.api_order.clone(),
-                    self.order.url.clone(),
-                ),
+                order: Order::new(&self.order.inner, self.order.api_order.clone(), self.order.url.clone())
             })
         } else {
             None
@@ -190,7 +174,7 @@ impl NewOrder {
 /// [functions to create key pairs]: ../index.html#functions
 /// [supports]: https://letsencrypt.org/docs/integration-guide/#supported-key-algorithms
 pub struct CsrOrder {
-    pub(crate) order: Order,
+    pub(crate) order: Order
 }
 
 impl CsrOrder {
@@ -204,8 +188,8 @@ impl CsrOrder {
     ///
     /// [`finalize_pkey`]: struct.CsrOrder.html#method.finalize_pkey
     pub fn finalize(self, private_key_pem: &str, delay: Duration) -> Result<CertOrder> {
-        let pkey_pri = PKey::private_key_from_pem(private_key_pem.as_bytes())
-            .context("Error reading private key PEM")?;
+        let pkey_pri =
+            PKey::private_key_from_pem(private_key_pem.as_bytes()).context("Error reading private key PEM")?;
         self.finalize_pkey(pkey_pri, delay)
     }
 
@@ -216,12 +200,7 @@ impl CsrOrder {
     /// Once the CSR has been submitted, the order goes into a `processing` status,
     /// where we must poll until the status changes. The `delay` is the
     /// amount of time to wait between each poll attempt.
-    pub fn finalize_pkey(
-        self,
-        private_key: PKey<pkey::Private>,
-        delay: Duration,
-    ) -> Result<CertOrder> {
-        //
+    pub fn finalize_pkey(self, private_key: PKey<pkey::Private>, delay: Duration) -> Result<CertOrder> {
         // the domains that we have authorized
         let domains = self.order.api_order.domains();
 
@@ -263,7 +242,7 @@ fn wait_for_order_status(inner: &Arc<AccountInner>, url: &str, delay: Duration) 
     loop {
         let order = refresh_order(inner, url.to_string(), "valid")?;
         if !order.api_order.is_status_processing() {
-            return Ok(order);
+            return Ok(order)
         }
         thread::sleep(delay);
     }
@@ -272,18 +251,14 @@ fn wait_for_order_status(inner: &Arc<AccountInner>, url: &str, delay: Duration) 
 /// Order for an issued certificate that is ready to download.
 pub struct CertOrder {
     private_key: PKey<pkey::Private>,
-    order: Order,
+    order: Order
 }
 
 impl CertOrder {
     /// Request download of the issued certificate.
     pub fn download_cert(self) -> Result<Certificate> {
         //
-        let url = self
-            .order
-            .api_order
-            .certificate
-            .ok_or_else(|| anyhow::anyhow!("certificate url"))?;
+        let url = self.order.api_order.certificate.ok_or_else(|| anyhow::anyhow!("certificate url"))?;
         let inner = self.order.inner;
 
         let res = inner.transport.call(&url, &ApiEmptyString)?;

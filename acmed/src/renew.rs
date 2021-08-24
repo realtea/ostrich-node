@@ -5,8 +5,8 @@ use crate::{
     errors::*,
     persist::FilePersist
 };
+use errors::Result;
 use std::fs;
-use errors::{Result};
 
 fn should_request_cert(
     // args: &RenewArgs,

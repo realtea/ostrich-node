@@ -1,14 +1,12 @@
-use openssl::ec::EcKey;
-use openssl::pkey;
+use openssl::{ec::EcKey, pkey};
 
-use crate::cert::EC_GROUP_P256;
-use crate::error::*;
+use crate::{cert::EC_GROUP_P256, error::*};
 
 #[derive(Clone, Debug)]
 pub(crate) struct AcmeKey {
     private_key: EcKey<pkey::Private>,
     /// set once we contacted the ACME API to figure out the key id
-    key_id: Option<String>,
+    key_id: Option<String>
 }
 
 impl AcmeKey {
@@ -23,17 +21,11 @@ impl AcmeKey {
     }
 
     fn from_key(private_key: EcKey<pkey::Private>) -> AcmeKey {
-        AcmeKey {
-            private_key,
-            key_id: None,
-        }
+        AcmeKey { private_key, key_id: None }
     }
 
     pub(crate) fn to_pem(&self) -> Result<Vec<u8>> {
-        let pem = self
-            .private_key
-            .private_key_to_pem()
-            .context("private_key_to_pem")?;
+        let pem = self.private_key.private_key_to_pem().context("private_key_to_pem")?;
         Ok(pem)
     }
 

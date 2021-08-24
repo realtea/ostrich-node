@@ -1,18 +1,19 @@
-use openssl::ecdsa::EcdsaSig;
-use openssl::sha::sha256;
+use openssl::{ecdsa::EcdsaSig, sha::sha256};
 use serde::Serialize;
-use std::collections::VecDeque;
 use std::{
+    collections::VecDeque,
     convert::TryInto,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex}
 };
 
-use crate::acc::AcmeKey;
-use crate::error::*;
-use crate::jwt::*;
-use crate::req::{req_expect_header, req_handle_error, req_head, req_post};
-use crate::util::base64url;
-use errors::{Error,Result};
+use crate::{
+    acc::AcmeKey,
+    error::*,
+    jwt::*,
+    req::{req_expect_header, req_handle_error, req_head, req_post},
+    util::base64url
+};
+use errors::{Error, Result};
 /// JWS payload and nonce handling for requests to the API.
 ///
 /// Setup is:
@@ -24,15 +25,12 @@ use errors::{Error,Result};
 #[derive(Clone, Debug)]
 pub(crate) struct Transport {
     acme_key: AcmeKey,
-    nonce_pool: Arc<NoncePool>,
+    nonce_pool: Arc<NoncePool>
 }
 
 impl Transport {
     pub fn new(nonce_pool: &Arc<NoncePool>, acme_key: AcmeKey) -> Self {
-        Transport {
-            acme_key,
-            nonce_pool: nonce_pool.clone(),
-        }
+        Transport { acme_key, nonce_pool: nonce_pool.clone() }
     }
 
     /// Update the key id once it is known (part of setting up the transport).
@@ -56,10 +54,7 @@ impl Transport {
     }
 
     fn do_call<T: Serialize + ?Sized, F: Fn(&str, String, &AcmeKey, &T) -> Result<String>>(
-        &self,
-        url: &str,
-        body: &T,
-        make_body: F,
+        &self, url: &str, body: &T, make_body: F
     ) -> Result<ureq::Response> {
         // The ACME API may at any point invalidate all nonces. If we detect such an
         // error, we loop until the server accepts the nonce.
@@ -83,24 +78,24 @@ impl Transport {
             let result = req_handle_error(response);
 
             if let Err(problem) = &result {
-                debug!("problem : {:?}",problem);
-                if problem._type ==  "urn:ietf:params:acme:error:rateLimited"{
+                debug!("problem : {:?}", problem);
+                if problem._type == "urn:ietf:params:acme:error:rateLimited" {
                     debug!("acme hit limit");
                     return Err(Error::AcmeLimited)
                 }
                 if problem.is_bad_nonce() {
                     // retry the request with a new nonce.
                     debug!("Retrying on bad nonce");
-                    continue;
+                    continue
                 }
                 // it seems we sometimes make bad JWTs. Why?!
                 if problem.is_jwt_verification_error() {
                     debug!("Retrying on: {}", problem);
-                    continue;
+                    continue
                 }
             }
 
-            return Ok(result.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?);
+            return Ok(result.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?)
         }
     }
 }
@@ -109,15 +104,12 @@ impl Transport {
 #[derive(Default, Debug)]
 pub(crate) struct NoncePool {
     nonce_url: String,
-    pool: Mutex<VecDeque<String>>,
+    pool: Mutex<VecDeque<String>>
 }
 
 impl NoncePool {
     pub fn new(nonce_url: &str) -> Self {
-        NoncePool {
-            nonce_url: nonce_url.into(),
-            ..Default::default()
-        }
+        NoncePool { nonce_url: nonce_url.into(), ..Default::default() }
     }
 
     fn extract_nonce(&self, res: &ureq::Response) {
@@ -136,7 +128,7 @@ impl NoncePool {
             let mut pool = self.pool.lock().unwrap();
             if let Some(nonce) = pool.pop_front() {
                 trace!("Use previous nonce");
-                return Ok(nonce);
+                return Ok(nonce)
             }
         }
         debug!("Request new nonce");
@@ -145,32 +137,18 @@ impl NoncePool {
     }
 }
 
-fn jws_with_kid<T: Serialize + ?Sized>(
-    url: &str,
-    nonce: String,
-    key: &AcmeKey,
-    payload: &T,
-) -> Result<String> {
+fn jws_with_kid<T: Serialize + ?Sized>(url: &str, nonce: String, key: &AcmeKey, payload: &T) -> Result<String> {
     let protected = JwsProtected::new_kid(key.key_id(), url, nonce);
     jws_with(protected, key, payload)
 }
 
-fn jws_with_jwk<T: Serialize + ?Sized>(
-    url: &str,
-    nonce: String,
-    key: &AcmeKey,
-    payload: &T,
-) -> Result<String> {
+fn jws_with_jwk<T: Serialize + ?Sized>(url: &str, nonce: String, key: &AcmeKey, payload: &T) -> Result<String> {
     let jwk: Jwk = key.try_into()?;
     let protected = JwsProtected::new_jwk(jwk, url, nonce);
     jws_with(protected, key, payload)
 }
 
-fn jws_with<T: Serialize + ?Sized>(
-    protected: JwsProtected,
-    key: &AcmeKey,
-    payload: &T,
-) -> Result<String> {
+fn jws_with<T: Serialize + ?Sized>(protected: JwsProtected, key: &AcmeKey, payload: &T) -> Result<String> {
     let protected = {
         let pro_json = serde_json::to_string(&protected)?;
         base64url(pro_json.as_bytes())

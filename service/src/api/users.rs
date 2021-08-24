@@ -9,7 +9,7 @@ use crate::{
 use crate::http::handler::{ResponseEntity, ServerAddr, ServerNode};
 use errors::{Error, Result, ServiceError};
 use hyper::{body::Buf, Body, Request};
-use log::{info,error};
+use log::{error, info};
 use serde::{Deserialize, Serialize};
 use serde_repr::*;
 use sqlx::{pool::PoolConnection, Sqlite};

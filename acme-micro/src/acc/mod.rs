@@ -1,14 +1,16 @@
 //
 use std::sync::Arc;
 
-use crate::api::{ApiAccount, ApiDirectory, ApiIdentifier, ApiOrder, ApiRevocation};
-use crate::cert::Certificate;
-use crate::order::{NewOrder, Order};
-use crate::req::req_expect_header;
-use crate::trans::Transport;
-use crate::util::{base64url, read_json};
+use crate::{
+    api::{ApiAccount, ApiDirectory, ApiIdentifier, ApiOrder, ApiRevocation},
+    cert::Certificate,
+    order::{NewOrder, Order},
+    req::req_expect_header,
+    trans::Transport,
+    util::{base64url, read_json}
+};
 mod akey;
-use errors::{Result,Error};
+use errors::{Error, Result};
 
 pub(crate) use self::akey::AcmeKey;
 
@@ -16,7 +18,7 @@ pub(crate) use self::akey::AcmeKey;
 pub(crate) struct AccountInner {
     pub transport: Transport,
     pub api_account: ApiAccount,
-    pub api_directory: ApiDirectory,
+    pub api_directory: ApiDirectory
 }
 
 /// Account with an ACME provider.
@@ -35,22 +37,12 @@ pub(crate) struct AccountInner {
 /// [`Directory::account`]: struct.Directory.html#method.account
 #[derive(Clone)]
 pub struct Account {
-    inner: Arc<AccountInner>,
+    inner: Arc<AccountInner>
 }
 
 impl Account {
-    pub(crate) fn new(
-        transport: Transport,
-        api_account: ApiAccount,
-        api_directory: ApiDirectory,
-    ) -> Self {
-        Account {
-            inner: Arc::new(AccountInner {
-                transport,
-                api_account,
-                api_directory,
-            }),
-        }
+    pub(crate) fn new(transport: Transport, api_account: ApiAccount, api_directory: ApiDirectory) -> Self {
+        Account { inner: Arc::new(AccountInner { transport, api_account, api_directory }) }
     }
 
     /// Private key for this account.
@@ -78,12 +70,7 @@ impl Account {
         let prim_arr = [primary_name];
         let domains = prim_arr.iter().chain(alt_names);
         let order = ApiOrder {
-            identifiers: domains
-                .map(|s| ApiIdentifier {
-                    _type: "dns".into(),
-                    value: s.to_string(),
-                })
-                .collect(),
+            identifiers: domains.map(|s| ApiIdentifier { _type: "dns".into(), value: s.to_string() }).collect(),
             ..Default::default()
         };
 
@@ -104,10 +91,7 @@ impl Account {
         // convert to base64url of the DER (which is not PEM).
         let certificate = base64url(&cert.certificate_der()?);
 
-        let revoc = ApiRevocation {
-            certificate,
-            reason: reason as usize,
-        };
+        let revoc = ApiRevocation { certificate, reason: reason as usize };
 
         let url = &self.inner.api_directory.revokeCert;
         self.inner.transport.call(url, &revoc)?;
@@ -135,7 +119,7 @@ pub enum RevocationReason {
     // value 7 is not used
     RemoveFromCRL = 8,
     PrivilegeWithdrawn = 9,
-    AACompromise = 10,
+    AACompromise = 10
 }
 
 #[cfg(test)]

@@ -8,7 +8,7 @@ use crate::{
     req::{req_expect_header, req_get, req_handle_error},
     trans::{NoncePool, Transport},
     util::read_json,
-    Account,
+    Account
 };
 
 const LETSENCRYPT: &str = "https://acme-v02.api.letsencrypt.org/directory";
@@ -24,7 +24,7 @@ pub enum DirectoryUrl<'a> {
     /// to be in any trust chains.
     LetsEncryptStaging,
     /// Provide an arbitrary director URL to connect to.
-    Other(&'a str),
+    Other(&'a str)
 }
 
 impl<'a> DirectoryUrl<'a> {
@@ -32,7 +32,7 @@ impl<'a> DirectoryUrl<'a> {
         match self {
             DirectoryUrl::LetsEncrypt => LETSENCRYPT,
             DirectoryUrl::LetsEncryptStaging => LETSENCRYPT_STAGING,
-            DirectoryUrl::Other(s) => s,
+            DirectoryUrl::Other(s) => s
         }
     }
 }
@@ -41,7 +41,7 @@ impl<'a> DirectoryUrl<'a> {
 #[derive(Clone)]
 pub struct Directory {
     nonce_pool: Arc<NoncePool>,
-    api_directory: ApiDirectory,
+    api_directory: ApiDirectory
 }
 
 impl Directory {
@@ -51,10 +51,7 @@ impl Directory {
         let res = req_handle_error(req_get(&dir_url))?;
         let api_directory: ApiDirectory = read_json(res)?;
         let nonce_pool = Arc::new(NoncePool::new(&api_directory.newNonce));
-        Ok(Directory {
-            nonce_pool,
-            api_directory,
-        })
+        Ok(Directory { nonce_pool, api_directory })
     }
 
     pub fn register_account(&self, contact: Vec<String>) -> Result<Account> {
@@ -71,11 +68,7 @@ impl Directory {
         // Prepare making a call to newAccount. This is fine to do both for
         // new keys and existing. For existing the spec says to return a 200
         // with the Location header set to the key id (kid).
-        let acc = ApiAccount {
-            contact,
-            termsOfServiceAgreed: Some(true),
-            ..Default::default()
-        };
+        let acc = ApiAccount { contact, termsOfServiceAgreed: Some(true), ..Default::default() };
 
         let mut transport = Transport::new(&self.nonce_pool, acme_key);
         let res = transport.call_jwk(&self.api_directory.newAccount, &acc)?;
@@ -87,11 +80,7 @@ impl Directory {
         transport.set_key_id(kid);
 
         // The finished account
-        Ok(Account::new(
-            transport,
-            api_account,
-            self.api_directory.clone(),
-        ))
+        Ok(Account::new(transport, api_account, self.api_directory.clone()))
     }
 
     /// Access the underlying JSON object for debugging.

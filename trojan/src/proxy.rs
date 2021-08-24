@@ -1,4 +1,4 @@
-use crate::{ Address};
+use crate::Address;
 // use async_std::net::{TcpListener, TcpStream, UdpSocket};
 // use async_std::task::spawn;
 use async_tls::{server::TlsStream, TlsAcceptor};
@@ -13,11 +13,11 @@ use std::{
     sync::Arc
 };
 
+use futures_lite::io::copy;
 use glommio::{
     net::{TcpListener, TcpStream, UdpSocket},
     Local
 };
-use futures_lite::io::copy;
 
 #[derive(Clone)]
 pub struct ProxyBuilder {

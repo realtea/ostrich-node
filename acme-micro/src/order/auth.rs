@@ -1,15 +1,14 @@
 //
 use openssl::sha::sha256;
-use std::sync::Arc;
-use std::thread;
-use std::{convert::TryInto, time::Duration};
+use std::{convert::TryInto, sync::Arc, thread, time::Duration};
 
-use crate::acc::AccountInner;
-use crate::acc::AcmeKey;
-use crate::api::{ApiAuth, ApiChallenge, ApiEmptyObject, ApiEmptyString};
-use crate::error::*;
-use crate::jwt::*;
-use crate::util::{base64url, read_json};
+use crate::{
+    acc::{AccountInner, AcmeKey},
+    api::{ApiAuth, ApiChallenge, ApiEmptyObject, ApiEmptyString},
+    error::*,
+    jwt::*,
+    util::{base64url, read_json}
+};
 
 /// An authorization ([ownership proof]) for a domain name.
 ///
@@ -31,16 +30,12 @@ use crate::util::{base64url, read_json};
 pub struct Auth {
     inner: Arc<AccountInner>,
     api_auth: ApiAuth,
-    auth_url: String,
+    auth_url: String
 }
 
 impl Auth {
     pub(crate) fn new(inner: &Arc<AccountInner>, api_auth: ApiAuth, auth_url: &str) -> Self {
-        Auth {
-            inner: inner.clone(),
-            api_auth,
-            auth_url: auth_url.into(),
-        }
+        Auth { inner: inner.clone(), api_auth, auth_url: auth_url.into() }
     }
 
     /// Domain name for this authorization.
@@ -85,9 +80,7 @@ impl Auth {
     /// }
     /// ```
     pub fn http_challenge(&self) -> Option<Challenge<Http>> {
-        self.api_auth
-            .http_challenge()
-            .map(|c| Challenge::new(&self.inner, c.clone(), &self.auth_url))
+        self.api_auth.http_challenge().map(|c| Challenge::new(&self.inner, c.clone(), &self.auth_url))
     }
 
     /// Get the dns challenge.
@@ -116,9 +109,7 @@ impl Auth {
     ///
     /// The dns proof is not the same as the http proof.
     pub fn dns_challenge(&self) -> Option<Challenge<Dns>> {
-        self.api_auth
-            .dns_challenge()
-            .map(|c| Challenge::new(&self.inner, c.clone(), &self.auth_url))
+        self.api_auth.dns_challenge().map(|c| Challenge::new(&self.inner, c.clone(), &self.auth_url))
     }
 
     /// Get the TLS ALPN challenge.
@@ -129,9 +120,7 @@ impl Auth {
     /// validated, as well as an ACME extension containing the SHA256 of the
     /// key authorization.
     pub fn tls_alpn_challenge(&self) -> Option<Challenge<TlsAlpn>> {
-        self.api_auth
-            .tls_alpn_challenge()
-            .map(|c| Challenge::new(&self.inner, c.clone(), &self.auth_url))
+        self.api_auth.tls_alpn_challenge().map(|c| Challenge::new(&self.inner, c.clone(), &self.auth_url))
     }
 
     /// Access the underlying JSON object for debugging. We don't
@@ -161,7 +150,7 @@ pub struct Challenge<A> {
     inner: Arc<AccountInner>,
     api_challenge: ApiChallenge,
     auth_url: String,
-    _ph: std::marker::PhantomData<A>,
+    _ph: std::marker::PhantomData<A>
 }
 
 impl Challenge<Http> {
@@ -208,12 +197,7 @@ impl Challenge<TlsAlpn> {
 
 impl<A> Challenge<A> {
     fn new(inner: &Arc<AccountInner>, api_challenge: ApiChallenge, auth_url: &str) -> Self {
-        Challenge {
-            inner: inner.clone(),
-            api_challenge,
-            auth_url: auth_url.into(),
-            _ph: std::marker::PhantomData,
-        }
+        Challenge { inner: inner.clone(), api_challenge, auth_url: auth_url.into(), _ph: std::marker::PhantomData }
     }
 
     /// Check whether this challlenge really need validation. It might already been
@@ -234,16 +218,9 @@ impl<A> Challenge<A> {
         let auth = wait_for_auth_status(&self.inner, &self.auth_url, delay)?;
 
         if !auth.is_status_valid() {
-            let error = auth
-                .challenges
-                .iter()
-                .filter_map(|c| c.error.as_ref())
-                .next();
+            let error = auth.challenges.iter().filter_map(|c| c.error.as_ref()).next();
             let reason = if let Some(error) = error {
-                format!(
-                    "Failed: {}",
-                    error.detail.clone().unwrap_or_else(|| error._type.clone())
-                )
+                format!("Failed: {}", error.detail.clone().unwrap_or_else(|| error._type.clone()))
             } else {
                 "Validation failed and no error found".into()
             };
@@ -265,24 +242,16 @@ fn key_authorization(token: &str, key: &AcmeKey, extra_sha256: bool) -> Result<S
     let jwk_json = serde_json::to_string(&jwk_thumb)?;
     let digest = base64url(&sha256(jwk_json.as_bytes()));
     let key_auth = format!("{}.{}", token, digest);
-    let res = if extra_sha256 {
-        base64url(&sha256(key_auth.as_bytes()))
-    } else {
-        key_auth
-    };
+    let res = if extra_sha256 { base64url(&sha256(key_auth.as_bytes())) } else { key_auth };
     Ok(res)
 }
 
-fn wait_for_auth_status(
-    inner: &Arc<AccountInner>,
-    auth_url: &str,
-    delay: Duration,
-) -> Result<ApiAuth> {
+fn wait_for_auth_status(inner: &Arc<AccountInner>, auth_url: &str, delay: Duration) -> Result<ApiAuth> {
     let auth = loop {
         let res = inner.transport.call(auth_url, &ApiEmptyString)?;
         let auth: ApiAuth = read_json(res)?;
         if !auth.is_status_pending() {
-            break auth;
+            break auth
         }
         thread::sleep(delay);
     };

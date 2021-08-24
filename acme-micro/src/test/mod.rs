@@ -3,8 +3,7 @@
 use futures::Future;
 use hyper::{service::service_fn_ok, Body, Method, Request, Response, Server};
 use lazy_static::lazy_static;
-use std::net::TcpListener;
-use std::thread;
+use std::{net::TcpListener, thread};
 
 lazy_static! {
     static ref RE_URL: regex::Regex = regex::Regex::new("<URL>").unwrap();
@@ -12,7 +11,7 @@ lazy_static! {
 
 pub struct TestServer {
     pub dir_url: String,
-    shutdown: Option<futures::sync::oneshot::Sender<()>>,
+    shutdown: Option<futures::sync::oneshot::Sender<()>>
 }
 
 impl Drop for TestServer {
@@ -40,10 +39,7 @@ fn get_directory(url: &str) -> Response<Body> {
 fn head_new_nonce() -> Response<Body> {
     Response::builder()
         .status(204)
-        .header(
-            "Replay-Nonce",
-            "8_uBBV3N2DBRJczhoiB46ugJKUkUHxGzVe6xIMpjHFM",
-        )
+        .header("Replay-Nonce", "8_uBBV3N2DBRJczhoiB46ugJKUkUHxGzVe6xIMpjHFM")
         .body(Body::empty())
         .unwrap()
 }
@@ -67,11 +63,7 @@ fn post_new_acct(url: &str) -> Response<Body> {
     "status": "valid"
     }"#;
     let location: String = RE_URL.replace_all("<URL>/acme/acct/7728515", url).into();
-    Response::builder()
-        .status(201)
-        .header("Location", location)
-        .body(Body::from(BODY))
-        .unwrap()
+    Response::builder().status(201).header("Location", location).body(Body::from(BODY)).unwrap()
 }
 
 fn post_new_order(url: &str) -> Response<Body> {
@@ -89,9 +81,7 @@ fn post_new_order(url: &str) -> Response<Body> {
     ],
     "finalize": "<URL>/acme/finalize/7738992/18234324"
     }"#;
-    let location: String = RE_URL
-        .replace_all("<URL>/acme/order/YTqpYUthlVfwBncUufE8", url)
-        .into();
+    let location: String = RE_URL.replace_all("<URL>/acme/order/YTqpYUthlVfwBncUufE8", url).into();
     Response::builder()
         .status(201)
         .header("Location", location)
@@ -148,10 +138,7 @@ fn post_authz(url: &str) -> Response<Body> {
         }
         ]
     }"#;
-    Response::builder()
-        .status(201)
-        .body(Body::from(RE_URL.replace_all(BODY, url)))
-        .unwrap()
+    Response::builder().status(201).body(Body::from(RE_URL.replace_all(BODY, url))).unwrap()
 }
 
 fn post_finalize(_url: &str) -> Response<Body> {
@@ -159,10 +146,7 @@ fn post_finalize(_url: &str) -> Response<Body> {
 }
 
 fn post_certificate(_url: &str) -> Response<Body> {
-    Response::builder()
-        .status(200)
-        .body("CERT HERE".into())
-        .unwrap()
+    Response::builder().status(200).body("CERT HERE".into()).unwrap()
 }
 
 fn route_request(req: Request<Body>, url: &str) -> Response<Body> {
@@ -175,7 +159,7 @@ fn route_request(req: Request<Body>, url: &str) -> Response<Body> {
         (&Method::POST, "/acme/authz/YTqpYUthlVfwBncUufE8IRWLMSRqcSs") => post_authz(url),
         (&Method::POST, "/acme/finalize/7738992/18234324") => post_finalize(url),
         (&Method::POST, "/acme/cert/fae41c070f967713109028") => post_certificate(url),
-        (_, _) => Response::builder().status(404).body(Body::empty()).unwrap(),
+        (_, _) => Response::builder().status(404).body(Body::empty()).unwrap()
     }
 }
 
@@ -194,18 +178,13 @@ pub fn with_directory_server() -> TestServer {
 
     let (tx, rx) = futures::sync::oneshot::channel::<()>();
 
-    let graceful = server
-        .with_graceful_shutdown(rx)
-        .map_err(|err| eprintln!("server error: {}", err));
+    let graceful = server.with_graceful_shutdown(rx).map_err(|err| eprintln!("server error: {}", err));
 
     thread::spawn(move || {
         hyper::rt::run(graceful);
     });
 
-    TestServer {
-        dir_url,
-        shutdown: Some(tx),
-    }
+    TestServer { dir_url, shutdown: Some(tx) }
 }
 
 #[test]

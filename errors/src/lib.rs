@@ -30,7 +30,6 @@ pub enum Error {
     #[error("serde json errors")]
     Utf8Error(#[from] std::string::FromUtf8Error),
 
-
     #[error("IO errors")]
     TonicError(#[from] tonic::transport::Error),
     #[error("Resolver errors")]

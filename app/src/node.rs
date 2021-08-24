@@ -1,15 +1,14 @@
 #![allow(unreachable_code)]
 
-use app::{ DEFAULT_FALLBACK_ADDR};
+use app::DEFAULT_FALLBACK_ADDR;
 use async_tls::TlsAcceptor;
 use clap::{App, Arg};
 use errors::Result;
-use glommio::{CpuSet, Local,  LocalExecutorPoolBuilder, Placement};
-use log::{ info};
+use glommio::{CpuSet, Local, LocalExecutorPoolBuilder, Placement};
+use log::info;
 use rustls::{NoClientAuth, ServerConfig};
-use std::{io};
+use std::{io, sync::Arc};
 use trojan::{config::set_config, generate_authenticator, load_certs, load_keys, ProxyBuilder};
-use std::sync::Arc;
 
 fn main() -> Result<()> {
     let matches = App::new("ostrich")

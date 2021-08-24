@@ -7,7 +7,7 @@ use openssl::{
     pkey::{self, PKey},
     rsa::Rsa,
     stack::Stack,
-    x509::{extension::SubjectAlternativeName, X509Req, X509ReqBuilder, X509},
+    x509::{extension::SubjectAlternativeName, X509Req, X509ReqBuilder, X509}
 };
 
 use crate::error::*;
@@ -49,7 +49,6 @@ pub fn create_p384_key() -> Result<PKey<pkey::Private>> {
 }
 
 pub(crate) fn create_csr(pkey: &PKey<pkey::Private>, domains: &[&str]) -> Result<X509Req> {
-    //
     // the csr builder
     let mut req_bld = X509ReqBuilder::new()?;
 
@@ -59,11 +58,7 @@ pub(crate) fn create_csr(pkey: &PKey<pkey::Private>, domains: &[&str]) -> Result
     // set all domains as alt names
     let mut stack = Stack::new()?;
     let ctx = req_bld.x509v3_context(None);
-    let as_lst = domains
-        .iter()
-        .map(|&e| format!("DNS:{}", e))
-        .collect::<Vec<_>>()
-        .join(", ");
+    let as_lst = domains.iter().map(|&e| format!("DNS:{}", e)).collect::<Vec<_>>().join(", ");
     let as_lst = as_lst[4..].to_string();
     let mut an = SubjectAlternativeName::new();
     an.dns(&as_lst);
@@ -82,15 +77,12 @@ pub(crate) fn create_csr(pkey: &PKey<pkey::Private>, domains: &[&str]) -> Result
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Certificate {
     private_key: String,
-    certificate: String,
+    certificate: String
 }
 
 impl Certificate {
     pub(crate) fn new(private_key: String, certificate: String) -> Self {
-        Certificate {
-            private_key,
-            certificate,
-        }
+        Certificate { private_key, certificate }
     }
 
     pub fn parse(private_key: String, certificate: String) -> Result<Self> {
@@ -99,10 +91,7 @@ impl Certificate {
         // validate private key
         PKey::private_key_from_pem(private_key.as_bytes())?;
 
-        Ok(Certificate {
-            private_key,
-            certificate,
-        })
+        Ok(Certificate { private_key, certificate })
     }
 
     /// The PEM encoded private key.
@@ -139,7 +128,7 @@ impl Certificate {
     pub fn valid_days_left(&self) -> Result<i64> {
         // the cert used in the tests is not valid to load as x509
         if cfg!(test) {
-            return Ok(89);
+            return Ok(89)
         }
 
         // load as x509

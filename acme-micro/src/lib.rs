@@ -152,7 +152,6 @@
 //! [ACME draft spec 18](https://tools.ietf.org/html/draft-ietf-acme-acme-18), and relies
 //! heavily on the [openssl](https://docs.rs/openssl/) crate to make JWK/JWT and sign requests
 //! to the API.
-//!
 
 #[cfg(doctest)]
 doc_comment::doctest!("../README.md");
@@ -169,10 +168,11 @@ mod util;
 pub mod api;
 pub mod order;
 
-#[cfg(test)]
-mod test;
+#[cfg(test)] mod test;
 
-pub use crate::acc::{Account, RevocationReason};
-pub use crate::cert::{create_p256_key, create_p384_key, create_rsa_key, Certificate};
-pub use crate::dir::{Directory, DirectoryUrl};
-pub use crate::error::{Error, Result};
+pub use crate::{
+    acc::{Account, RevocationReason},
+    cert::{create_p256_key, create_p384_key, create_rsa_key, Certificate},
+    dir::{Directory, DirectoryUrl},
+    error::{Error, Result}
+};

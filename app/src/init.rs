@@ -29,11 +29,12 @@ use std::{sync::Arc, time::Duration};
 use trojan::config::Config;
 // use trojan::{load_certs, load_keys};
 use acmed::{config::Config as AcmeConfig, errors::Context, sandbox};
-use glommio::{net::UdpSocket, timer::sleep, Task};
+use async_process::Command;
+use glommio::{channels::shared_channel::SharedSender, net::UdpSocket, timer::sleep, Task};
 use service::http::handler::serve;
-use glommio::channels::shared_channel::SharedSender;
+use std::os::unix::process::ExitStatusExt;
 
-pub async fn service_init(config: &Config, acmed_config: &AcmeConfig,sender: SharedSender<bool>) -> Result<()> {
+pub async fn service_init(config: &Config, acmed_config: &AcmeConfig, sender: SharedSender<bool>) -> Result<()> {
     // init log
     // let exe_path = std::env::current_exe()?;
     let mut tasks = vec![];
@@ -247,15 +248,47 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig,sender: Sha
             sleep(Duration::from_secs(7)).await;
             let sender = sender.connect().await;
             // Channel has room for 1 element so this will always succeed
+            let mut reload = false;
             loop {
-                sleep(Duration::from_secs(604800)).await; // checking every week
-                if acmed::renew::run(&acmed_config.clone()).is_ok(){
-                    sender.try_send(true).map_err(|e|{
-                        error!("send restart signal error: {:?}",e);
-                        Error::Eor(anyhow::anyhow!("{:?}",e))
-
+                // sleep(Duration::from_secs(604800)).await; // checking every week
+                // if acmed::renew::run(&acmed_config.clone()).is_ok(){
+                //     sender.try_send(true).map_err(|e|{
+                //         error!("send restart signal error: {:?}",e);
+                //         Error::Eor(anyhow::anyhow!("{:?}",e))
+                //
+                //     })?;
+                // }
+                sleep(Duration::from_secs(3 * 60)).await; // test
+                match acmed::renew::run(&acmed_config.clone()) {
+                    Ok(_) => {
+                        info!("tls certs has been renewed");
+                        reload = true
+                    }
+                    Err(e) => {
+                        match e {
+                            Error::AcmeLimited => {
+                                warn!("hitting rate limit of LetsEncrypt");
+                                reload = true // test
+                                              // reload = false//production
+                            }
+                            _ => {
+                                error!("renewing tls certs error: {:?}", e);
+                                reload = false
+                            }
+                        }
+                    }
+                }
+                if reload {
+                    let p = Command::new("killall").arg("-e").arg("ostrich_node").status().await?;
+                    if p.signal().is_some() {
+                        error!("failed to killall ostrich node process");
+                    }
+                    sender.try_send(true).map_err(|e| {
+                        error!("send reload signal error: {:?}", e);
+                        Error::Eor(anyhow::anyhow!("{:?}", e))
                     })?;
                 }
+
                 // let  p = Command::new("systemctl")
                 //     .arg("restart")
                 //     .arg("nginx")
@@ -274,11 +307,11 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig,sender: Sha
                 //     .stdout(Stdio::null())
                 //     .stderr(Stdio::null())
                 //     .spawn()?;
-                    // .arg(">/dev/null")
-                    // .arg("2>&1")
-                    // .arg("&")
-                    // .status()
-                    // .await?;
+                // .arg(">/dev/null")
+                // .arg("2>&1")
+                // .arg("&")
+                // .status()
+                // .await?;
                 // if p.signal().is_some(){
                 //     error!("failed to restart ostrich node service");
                 //     // std::process::exit(2)
