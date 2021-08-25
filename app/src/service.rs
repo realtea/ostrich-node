@@ -85,7 +85,7 @@ fn main() -> Result<()> {
                 std::process::exit(1)
             }
             sleep(Duration::from_secs(7)).await;
-            let mut p = Command::new("nohup")
+            let mut p = std::process::Command::new("nohup")
                .arg("/usr/bin/ostrich_node")
                .arg("-c")
                .arg("/etc/ostrich/conf/ostrich.json")
@@ -94,16 +94,17 @@ fn main() -> Result<()> {
                // .arg("&")
                .stdout(Stdio::null())
                .stderr(Stdio::null())
-               .spawn()?;
+               .status()?;
             // if p.signal().is_some(){
             //     error!("failed to restart ostrich node service");
             //     std::process::exit(2)
             // }
-            info!("init success and waiting for process exit status");
-            p.status().await?;
-            info!("waiting for reload signal");
+            // info!("init success and waiting for process exit status");
+            // let exit = p.status().await?;
+            error!("ostrich node exit status: {:?},with code: {:?},signal: {:?}", p, p.code(), p.signal());
+            error!("waiting for reload signal");
             let _ = receiver.recv().await;
-            info!("reload signal has been received");
+            error!("reload signal has been received");
             // p.kill()?;
             info!("starting to reload service");
         }

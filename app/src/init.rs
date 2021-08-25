@@ -41,8 +41,9 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig, sender: Sh
     let mut tasks = vec![];
     // let exe_path = std::env::current_dir()?;
     // let log_path = exe_path.join(DEFAULT_LOG_PATH);
+    let log_path = format!("{}{}", DEFAULT_LOG_PATH, "service");
     fs::create_dir_all(&DEFAULT_LOG_PATH)?;
-    let log_path = Path::new(DEFAULT_LOG_PATH).join("ostrich_service.log");
+
     log_init(config.log_level, &log_path).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
 
     let remote_addr = config.remote_addr.clone();

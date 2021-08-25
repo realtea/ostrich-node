@@ -18,7 +18,7 @@ pub const DEFAULT_FALLBACK_ADDR: &str = "127.0.0.1::28780";
 pub const DEFAULT_COMMAND_ADDR: &str = "127.0.0.1:12771";
 pub const DEFAULT_REGISTER_PORT: u16 = 22751;
 
-pub const DEFAULT_LOG_PATH: &str = "/etc/ostrich/logs";
+pub const DEFAULT_LOG_PATH: &str = "/etc/ostrich/logs/";
 pub const DEFAULT_LOG_CLEANUP_INTERVAL: u64 = 259200;
 pub async fn create_cmd_user(mut db: PoolConnection<Sqlite>, token: String, role: EntityId) -> Result<ResponseEntity> {
     if token.len() > USER_TOKEN_MAX_LEN {
@@ -129,7 +129,7 @@ fn from_usize(u: usize) -> LevelFilter {
         _ => LevelFilter::Error
     }
 }
-pub fn log_init<P: AsRef<Path>>(level: u8, log_path: P) -> Result<()> {
+pub fn log_init(level: u8, log_path: &str) -> Result<()> {
     // let log_level = LogLevel { level };
     // env_logger::Builder::new()
     //     .format(|buf, record| {
@@ -147,20 +147,51 @@ pub fn log_init<P: AsRef<Path>>(level: u8, log_path: P) -> Result<()> {
     //     // .filter(Some("logger_example"), LevelFilter::Debug)
     //     .init();
 
+    // use log4rs::{
+    //     append::file::FileAppender,
+    //     config::{Appender, Config, Root},
+    //     encode::pattern::PatternEncoder
+    // };
+
+
+    let roll_pattern = format!("{}/{}", log_path, "log.{}");
+
+    use log::LevelFilter;
     use log4rs::{
-        append::file::FileAppender,
-        config::{Appender, Config, Root},
+        append::rolling_file::{policy, RollingFileAppender},
+        config::{Appender, Config, Logger, Root},
         encode::pattern::PatternEncoder
     };
-    let logfile = FileAppender::builder()
-        // {l} {m} at {M} in {f}:{L}
-        .encoder(Box::new(PatternEncoder::new("[{d} {l} {M}] {m} in {f}:{L}\n")))
-        .build(&log_path)?;
+    const K: u64 = 1024;
+    const M: u64 = K * K;
+    const FILE_SIZE: u64 = 10 * M;
+    const FILE_COUNT: u32 = 10;
+
+    let trigger = policy::compound::trigger::size::SizeTrigger::new(FILE_SIZE);
+    let roller =
+        policy::compound::roll::fixed_window::FixedWindowRoller::builder().build(&roll_pattern, FILE_COUNT).unwrap();
+    let policy = policy::compound::CompoundPolicy::new(Box::new(trigger), Box::new(roller));
+    let file = RollingFileAppender::builder()
+        .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S.%3f %Z)} {l} [{t} - {T}] {m}{n}")))
+        .build(&roll_pattern, Box::new(policy))
+        .unwrap();
 
     let config = Config::builder()
-        .appender(Appender::builder().build("logfile", Box::new(logfile)))
-        .build(Root::builder().appender("logfile").build(from_usize(level as usize)))
-        .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+        .appender(Appender::builder().build("file", Box::new(file)))
+        .logger(Logger::builder().appender("file").additive(false).build("ostrich::", from_usize(level as usize)))
+        .build(Root::builder().appender("file").build(from_usize(level as usize)))
+        .unwrap();
+
+
+    // let logfile = FileAppender::builder()
+    //     // {l} {m} at {M} in {f}:{L}
+    //     .encoder(Box::new(PatternEncoder::new("[{d} {l} {M}] {m} in {f}:{L}\n")))
+    //     .build(&log_path)?;
+    //
+    // let config = Config::builder()
+    //     .appender(Appender::builder().build("logfile", Box::new(logfile)))
+    //     .build(Root::builder().appender("logfile").build(from_usize(level as usize)))
+    //     .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
     log4rs::init_config(config).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
 
     log_panics::init();
