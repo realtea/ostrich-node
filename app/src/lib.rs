@@ -86,6 +86,11 @@ pub struct LogLevel {
 //     }
 // }
 use std::{fmt, fs};
+use log4rs::append::rolling_file::policy::compound::roll::fixed_window::FixedWindowRoller;
+use log4rs::append::rolling_file::policy::compound::trigger::size::SizeTrigger;
+use log4rs::append::rolling_file::policy::compound::CompoundPolicy;
+use log4rs::filter::threshold::ThresholdFilter;
+
 impl fmt::Display for LogLevel {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.level {
@@ -129,7 +134,7 @@ fn from_usize(u: usize) -> LevelFilter {
         _ => LevelFilter::Error
     }
 }
-pub fn log_init(level: u8, log_path: &str) -> Result<()> {
+pub fn log_init<P: AsRef<Path>>(level: u8, log_path: P) -> Result<()> {
     // let log_level = LogLevel { level };
     // env_logger::Builder::new()
     //     .format(|buf, record| {
@@ -152,10 +157,6 @@ pub fn log_init(level: u8, log_path: &str) -> Result<()> {
     //     config::{Appender, Config, Root},
     //     encode::pattern::PatternEncoder
     // };
-
-
-    let roll_pattern = format!("{}/{}", log_path, "log.{}");
-
     use log::LevelFilter;
     use log4rs::{
         append::rolling_file::{policy, RollingFileAppender},
@@ -167,33 +168,32 @@ pub fn log_init(level: u8, log_path: &str) -> Result<()> {
     const FILE_SIZE: u64 = 10 * M;
     const FILE_COUNT: u32 = 10;
 
-    let trigger = policy::compound::trigger::size::SizeTrigger::new(FILE_SIZE);
-    let roller =
-        policy::compound::roll::fixed_window::FixedWindowRoller::builder().build(&roll_pattern, FILE_COUNT).unwrap();
-    let policy = policy::compound::CompoundPolicy::new(Box::new(trigger), Box::new(roller));
-    let file = RollingFileAppender::builder()
-        .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S.%3f %Z)} {l} [{t} - {T}] {m}{n}")))
-        .build(&roll_pattern, Box::new(policy))
-        .unwrap();
+    let window_size = 3; // log0, log1, log2
+    let fixed_window_roller =
+        FixedWindowRoller::builder().build("log{}",window_size).unwrap();
+    let size_limit = 5 * M; // 5KB as max log file size to roll
+    let size_trigger = SizeTrigger::new(size_limit);
+    let compound_policy = CompoundPolicy::new(Box::new(size_trigger),Box::new(fixed_window_roller));
 
     let config = Config::builder()
-        .appender(Appender::builder().build("file", Box::new(file)))
-        .logger(Logger::builder().appender("file").additive(false).build("ostrich::", from_usize(level as usize)))
-        .build(Root::builder().appender("file").build(from_usize(level as usize)))
-        .unwrap();
-
-
-    // let logfile = FileAppender::builder()
-    //     // {l} {m} at {M} in {f}:{L}
-    //     .encoder(Box::new(PatternEncoder::new("[{d} {l} {M}] {m} in {f}:{L}\n")))
-    //     .build(&log_path)?;
-    //
-    // let config = Config::builder()
-    //     .appender(Appender::builder().build("logfile", Box::new(logfile)))
-    //     .build(Root::builder().appender("logfile").build(from_usize(level as usize)))
-    //     .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+        .appender(
+            Appender::builder()
+                .filter(Box::new(ThresholdFilter::new(from_usize(level as usize))))
+                .build(
+                    "logfile",
+                    Box::new(
+                        RollingFileAppender::builder()
+                            .encoder(Box::new(PatternEncoder::new("[{d} {l} {M}] {m} in {f}:{L}\n")))
+                            .build(&log_path, Box::new(compound_policy)).unwrap(),
+                    ),
+                ),
+        )
+        .build(
+            Root::builder()
+                .appender("logfile")
+                .build(from_usize(level as usize)),
+        ).unwrap();
     log4rs::init_config(config).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
-
     log_panics::init();
     // Logger::try_with_env()
     //     .unwrap()

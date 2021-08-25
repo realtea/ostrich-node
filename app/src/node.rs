@@ -29,8 +29,10 @@ fn main() -> Result<()> {
 
     // let exe_path = std::env::current_dir()?;
     // let log_path = exe_path.join(DEFAULT_LOG_PATH);
-    let log_path = format!("{}{}", DEFAULT_LOG_PATH, "node");
+    let log_path = Path::new(&DEFAULT_LOG_PATH).join("node");
     fs::create_dir_all(&log_path)?;
+
+    let log_path = log_path.join("ostrich_node.log");
 
 
     log_init(config.log_level, &log_path).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
