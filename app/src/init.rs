@@ -22,7 +22,8 @@ use service::{
 use std::{
     env, fs,
     net::{Ipv4Addr, SocketAddrV4},
-    ops::Sub
+    ops::Sub,
+    path::Path
 };
 // use std::str::FromStr;
 use std::{sync::Arc, time::Duration};
@@ -38,11 +39,11 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig, sender: Sh
     // init log
     // let exe_path = std::env::current_exe()?;
     let mut tasks = vec![];
-    let exe_path = std::env::current_dir()?;
-    let log_path = exe_path.join(DEFAULT_LOG_PATH);
-    fs::create_dir_all(&log_path)?;
-
-    log_init(config.log_level, &log_path)?;
+    // let exe_path = std::env::current_dir()?;
+    // let log_path = exe_path.join(DEFAULT_LOG_PATH);
+    fs::create_dir_all(&DEFAULT_LOG_PATH)?;
+    let log_path = Path::new(DEFAULT_LOG_PATH).join("ostrich_service.log");
+    log_init(config.log_level, &log_path).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
 
     let remote_addr = config.remote_addr.clone();
     let remote_port = config.remote_port;
@@ -260,7 +261,7 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig, sender: Sh
                 // }
 
                 sleep(Duration::from_secs(604800)).await; // checking every week
-                // sleep(Duration::from_secs(3 * 60)).await; // test
+                                                          // sleep(Duration::from_secs(3 * 60)).await; // test
                 match acmed::renew::run(&acmed_config.clone()) {
                     Ok(_) => {
                         info!("tls certs has been renewed");

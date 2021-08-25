@@ -155,10 +155,10 @@ impl FilePersist {
         let privkey_path = path.join("private.key");
         let cert_privkey_path = cert_path.join("private.key");
         debug!("writing privkey,privkey_path: {:?}, cert_path: {:?}", privkey_path, cert_path);
-        if privkey_path.exists(){
+        if privkey_path.exists() {
             fs::remove_file(&privkey_path)?;
         }
-        if cert_privkey_path.exists(){
+        if cert_privkey_path.exists() {
             fs::remove_file(&cert_privkey_path)?;
         }
         write(&privkey_path, 0o440, fullcert.private_key().as_bytes())?;
@@ -167,10 +167,10 @@ impl FilePersist {
         debug!("writing full cert with intermediates");
         let fullkey_path = path.join("fullchain.cer");
         let cert_fullkey_path = cert_path.join("fullchain.cer");
-        if fullkey_path.exists(){
+        if fullkey_path.exists() {
             fs::remove_file(&fullkey_path)?;
         }
-        if cert_fullkey_path.exists(){
+        if cert_fullkey_path.exists() {
             fs::remove_file(&cert_fullkey_path)?;
         }
         write(&fullkey_path, 0o444, fullcert.certificate().as_bytes())?;
@@ -178,21 +178,21 @@ impl FilePersist {
 
         debug!("writing chain");
         let chain_path = path.join("chain");
-        if chain_path.exists(){
+        if chain_path.exists() {
             fs::remove_file(&chain_path)?;
         }
         write(&chain_path, 0o444, chain.as_bytes())?;
 
         debug!("writing single cert");
         let cert_path = path.join("cert");
-        if cert_path.exists(){
+        if cert_path.exists() {
             fs::remove_file(&cert_path)?;
         }
         write(&cert_path, 0o444, cert.as_bytes())?;
 
         debug!("writing bundle");
         let bundle_path = path.join("bundle");
-        if bundle_path.exists(){
+        if bundle_path.exists() {
             fs::remove_file(&bundle_path)?;
         }
         write(&bundle_path, 0o440, bundle.as_bytes())?;

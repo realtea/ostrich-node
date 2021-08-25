@@ -12,17 +12,13 @@ use service::{
     http::handler::{ResponseBody, ResponseEntity, Role}
 };
 use sqlx::{pool::PoolConnection, Sqlite};
-use std::{
-    collections::HashMap,
-    io::Write,
-    path::{Path, PathBuf}
-};
+use std::{collections::HashMap, path::Path};
 pub const DNS_CACHE_TIMEOUT: u64 = 3 * 60;
 pub const DEFAULT_FALLBACK_ADDR: &str = "127.0.0.1::28780";
 pub const DEFAULT_COMMAND_ADDR: &str = "127.0.0.1:12771";
 pub const DEFAULT_REGISTER_PORT: u16 = 22751;
 
-pub const DEFAULT_LOG_PATH: &str = "logs";
+pub const DEFAULT_LOG_PATH: &str = "/etc/ostrich/logs";
 pub const DEFAULT_LOG_CLEANUP_INTERVAL: u64 = 259200;
 pub async fn create_cmd_user(mut db: PoolConnection<Sqlite>, token: String, role: EntityId) -> Result<ResponseEntity> {
     if token.len() > USER_TOKEN_MAX_LEN {
@@ -103,24 +99,71 @@ impl fmt::Display for LogLevel {
     }
 }
 
-pub fn log_init(_level: u8, _log_path: &PathBuf) -> Result<()> {
-    // let log_level = LogLevel { level };
-    env_logger::Builder::new()
-        .format(|buf, record| {
-            writeln!(
-                buf,
-                "{}:{} {} [{}] - {}",
-                record.file().unwrap_or("unknown"),
-                record.line().unwrap_or(0),
-                chrono::Local::now().format("%Y-%m-%dT%H:%M:%S"),
-                record.level(),
-                record.args()
-            )
-        })
-        .filter(None, LevelFilter::Debug)
-        // .filter(Some("logger_example"), LevelFilter::Debug)
-        .init();
+// fn init_logger() -> anyhow::Result<()> {
+//     use log::LevelFilter;
+//     use log4rs::append::file::FileAppender;
+//     use log4rs::config::{Appender, Config, Root};
+//     use log4rs::encode::pattern::PatternEncoder;
+//
+//     let logfile = FileAppender::builder()
+//                                                             // {l} {m} at {M} in {f}:{L}
+//         .encoder(Box::new(PatternEncoder::new("[{d} {l} {M}] {m} in {f}:{L}\n")))
+//         .build("gurk.log")?;
+//
+//     let config = Config::builder()
+//         .appender(Appender::builder().build("logfile", Box::new(logfile)))
+//         .build(Root::builder().appender("logfile").build(LevelFilter::Info))?;
+//
+//     log4rs::init_config(config)?;
+//     Ok(())
+// }
 
+fn from_usize(u: usize) -> LevelFilter {
+    match u {
+        0 => LevelFilter::Off,
+        1 => LevelFilter::Error,
+        2 => LevelFilter::Warn,
+        3 => LevelFilter::Info,
+        4 => LevelFilter::Debug,
+        5 => LevelFilter::Trace,
+        _ => LevelFilter::Error
+    }
+}
+pub fn log_init<P: AsRef<Path>>(level: u8, log_path: P) -> Result<()> {
+    // let log_level = LogLevel { level };
+    // env_logger::Builder::new()
+    //     .format(|buf, record| {
+    //         writeln!(
+    //             buf,
+    //             "{}:{} {} [{}] - {}",
+    //             record.file().unwrap_or("unknown"),
+    //             record.line().unwrap_or(0),
+    //             chrono::Local::now().format("%Y-%m-%dT%H:%M:%S"),
+    //             record.level(),
+    //             record.args()
+    //         )
+    //     })
+    //     .filter(None, LevelFilter::Error)
+    //     // .filter(Some("logger_example"), LevelFilter::Debug)
+    //     .init();
+
+    use log4rs::{
+        append::file::FileAppender,
+        config::{Appender, Config, Root},
+        encode::pattern::PatternEncoder
+    };
+    let logfile = FileAppender::builder()
+        // {l} {m} at {M} in {f}:{L}
+        .encoder(Box::new(PatternEncoder::new("[{d} {l} {M}] {m} in {f}:{L}\n")))
+        .build(&log_path)?;
+
+    let config = Config::builder()
+        .appender(Appender::builder().build("logfile", Box::new(logfile)))
+        .build(Root::builder().appender("logfile").build(from_usize(level as usize)))
+        .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+    log4rs::init_config(config).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+
+    log_panics::init();
     // Logger::try_with_env()
     //     .unwrap()
     //     .format(detailed_format)

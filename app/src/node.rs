@@ -1,13 +1,13 @@
 #![allow(unreachable_code)]
 
-use app::DEFAULT_FALLBACK_ADDR;
+use app::{log_init, DEFAULT_FALLBACK_ADDR, DEFAULT_LOG_PATH};
 use async_tls::TlsAcceptor;
 use clap::{App, Arg};
-use errors::Result;
+use errors::{Error, Result};
 use glommio::{CpuSet, Local, LocalExecutorPoolBuilder, Placement};
 use log::info;
 use rustls::{NoClientAuth, ServerConfig};
-use std::{io, sync::Arc};
+use std::{fs, io, path::Path, sync::Arc};
 use trojan::{config::set_config, generate_authenticator, load_certs, load_keys, ProxyBuilder};
 
 fn main() -> Result<()> {
@@ -26,6 +26,15 @@ fn main() -> Result<()> {
 
     let config_path = matches.value_of("config").unwrap();
     let config = set_config(config_path)?;
+
+    // let exe_path = std::env::current_dir()?;
+    // let log_path = exe_path.join(DEFAULT_LOG_PATH);
+    fs::create_dir_all(DEFAULT_LOG_PATH)?;
+
+    let log_path = Path::new(DEFAULT_LOG_PATH).join("ostrich_node.log");
+
+    log_init(config.log_level, &log_path).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+
     let local_port = config.local_port;
     let passwd_list = config.password.to_owned();
     let authenticator = generate_authenticator(&passwd_list)?;

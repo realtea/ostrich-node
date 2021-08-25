@@ -246,7 +246,7 @@ cat > /etc/ostrich/conf/ostrich.json <<-EOF
     "password": [
         "251f6edc"
     ],
-    "log_level": 2,
+    "log_level": 1,
     "ssl": {
       "cert": "/etc/ostrich/certs/fullchain.cer",
       "key": "/etc/ostrich/certs/private.key",

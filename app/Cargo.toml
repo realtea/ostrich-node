@@ -8,6 +8,8 @@ async-std = "1.9.0"
 env_logger = "0.8"
 rustls = "0.19.1"
 log = "0.4.14"
+log-panics = "2.0.0"
+log4rs = "1.0.0"
 cfg-if = "1.0.0"
 futures-lite = { version = "1.7.0" }
 pin-project-lite = "0.2.0"
@@ -34,6 +36,7 @@ async-process = "1.2.0"
 warp = "0.3"
 warp-reverse-proxy = "0.3"
 async-global-executor = {version = "2.0.2",features = ["tokio"] }
+signal-hook-async-std = "0.2.1"
 
 trojan = {path = "../trojan"}
 errors = {path = "../errors"}
