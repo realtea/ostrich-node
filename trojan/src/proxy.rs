@@ -163,10 +163,10 @@ async fn redirect_fallback(source: &str, target: &str, tls_stream: TlsStream<Tcp
                 debug!("total {} bytes copied from source to target: {}", len, s_t);
             }
             Err(err) => {
-                target_sink.close().await?;
                 error!("{} error copying: {}", s_t, err);
             }
         }
+        target_sink.close().await?;
         Ok::<(), Error>(())
     };
 
@@ -176,10 +176,10 @@ async fn redirect_fallback(source: &str, target: &str, tls_stream: TlsStream<Tcp
                 debug!("total {} bytes copied from target: {}", len, t_s);
             }
             Err(err) => {
-                from_tls_sink.close().await?;
                 error!("{} error copying: {}", t_s, err);
             }
         }
+        from_tls_sink.close().await?;
         Ok::<(), Error>(())
     };
     futures::pin_mut!(source_to_target_ft);
@@ -248,10 +248,10 @@ async fn proxy(
                         debug!("total {} bytes copied from source to target: {}", len, s_t);
                     }
                     Err(err) => {
-                        target_sink.close().await?;
                         error!("{} error copying: {}", s_t, err);
                     }
                 }
+                target_sink.close().await?;
                 Ok::<(), Error>(())
             };
 
@@ -261,10 +261,10 @@ async fn proxy(
                         debug!("total {} bytes copied from target: {}", len, t_s);
                     }
                     Err(err) => {
-                        from_tls_sink.close().await?;
                         error!("{} error copying: {}", t_s, err);
                     }
                 }
+                from_tls_sink.close().await?;
                 Ok::<(), Error>(())
             };
             futures::pin_mut!(source_to_target_ft);
