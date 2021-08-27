@@ -31,22 +31,18 @@ use trojan::config::Config;
 // use trojan::{load_certs, load_keys};
 use acmed::{config::Config as AcmeConfig, errors::Context, sandbox};
 use async_process::Command;
-use glommio::{channels::shared_channel::SharedSender, net::UdpSocket, timer::sleep, Task};
+use async_std::task::{sleep, spawn};
+// use glommio::{channels::shared_channel::SharedSender, net::UdpSocket, timer::sleep, Task};
+use async_std::net::UdpSocket;
 use service::http::handler::serve;
 use std::os::unix::process::ExitStatusExt;
 
-pub async fn service_init(config: &Config, acmed_config: &AcmeConfig, sender: SharedSender<bool>) -> Result<()> {
+pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<()> {
     // init log
     // let exe_path = std::env::current_exe()?;
-    let mut tasks = vec![];
     // let exe_path = std::env::current_dir()?;
     // let log_path = exe_path.join(DEFAULT_LOG_PATH);
-    let log_path = Path::new(&DEFAULT_LOG_PATH).join("service");
-    fs::create_dir_all(&log_path)?;
 
-    let log_path = log_path.join("ostrich_service.log");
-
-    log_init(config.log_level, &log_path).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
 
     let remote_addr = config.remote_addr.clone();
     let remote_port = config.remote_port;
@@ -115,36 +111,33 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig, sender: Sh
 
     let host = config.local_addr.to_owned();
     let port = config.local_port;
-    tasks.push(
-        Task::<Result<()>>::local(async move {
-            loop {
-                sleep(Duration::from_secs(3 * 60)).await;
+    spawn(async move {
+        loop {
+            sleep(Duration::from_secs(3 * 60)).await;
 
-                // TODO &
-                let addr = NodeAddress { ip: host.clone(), port };
-                let total = 50;
-                let node = Node { addr, count: 0, total, last_update: chrono::Utc::now().timestamp() };
-                info!("reporting node: {:?}", node);
-                let body = serde_json::to_vec(&node).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
-                // Create a request.
+            // TODO &
+            let addr = NodeAddress { ip: host.clone(), port };
+            let total = 50;
+            let node = Node { addr, count: 0, total, last_update: chrono::Utc::now().timestamp() };
+            info!("reporting node: {:?}", node);
+            let body = serde_json::to_vec(&node).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+            // Create a request.
 
-                match surf::post(&remote_addr)
+            match surf::post(&remote_addr)
                     .body(body)
                     // .timeout(Duration::from_secs(60))
                     .await
-                {
-                    Ok(_resp) => {
-                        // info!("reporting internal");
-                    }
-                    Err(e) => {
-                        error!("{:?}", e);
-                    }
+            {
+                Ok(_resp) => {
+                    // info!("reporting internal");
+                }
+                Err(e) => {
+                    error!("{:?}", e);
                 }
             }
-            // Ok(()) as Result<()>
-        })
-        .detach()
-    );
+        }
+        Ok(()) as Result<()>
+    });
 
     // spawn(async move {
     //     loop {
@@ -162,180 +155,142 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig, sender: Sh
     // })?;
     // let register_task =
     let chall_dir = acmed_config.system.chall_dir.clone();
-    tasks.push(
-        Task::<Result<()>>::local(async move {
-            env::set_current_dir(&chall_dir)?;
-            sandbox::init().context("Failed to drop privileges")?;
-            let socket = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), DEFAULT_REGISTER_PORT);
-            serve_register(socket, serve, state).await?;
-            Ok(()) as Result<()>
-        })
-        .detach()
-    );
+    spawn(async move {
+        env::set_current_dir(&chall_dir)?;
+        sandbox::init().context("Failed to drop privileges")?;
+        let socket = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), DEFAULT_REGISTER_PORT);
+        serve_register(socket, serve, state).await?;
+        Ok(()) as Result<()>
+    });
+    spawn(async move {
+        loop {
+            sleep(Duration::from_secs(5 * 60)).await;
+            let mut nodes = cleanup_state.server.lock().await;
+            let now = chrono::Utc::now().timestamp();
+            let len = nodes.len();
 
-    tasks.push(
-        Task::<Result<()>>::local(async move {
-            loop {
-                sleep(Duration::from_secs(5 * 60)).await;
-                let mut nodes = cleanup_state.server.lock().await;
-                let now = chrono::Utc::now().timestamp();
-                let len = nodes.len();
-
-                if len == 0 {
-                    drop(nodes);
-                    continue
-                }
-                for _i in 0..len {
-                    if let Some(node) = nodes.pop_front() {
-                        if now.sub(node.last_update) < NODE_EXPIRE {
-                            nodes.push_back(node);
-                        }
-                    }
-                }
+            if len == 0 {
                 drop(nodes);
+                continue
             }
-            // Ok(()) as Result<()>
-        })
-        .detach()
-    );
-
-    tasks.push(
-        Task::<Result<()>>::local(async move {
-            let socket = UdpSocket::bind(DEFAULT_COMMAND_ADDR).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
-            let mut buf = vec![0u8; 1024];
-
-            info!("Listening on {}", socket.local_addr().unwrap()); // TODO
-
-            loop {
-                let (n, peer) = socket.recv_from(&mut buf).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
-
-                let mut data = BytesMut::new();
-                data.extend_from_slice(&buf[..n]);
-
-                match Frame::get_frame_type(&data.as_ref()) {
-                    Frame::CreateUserRequest => {
-                        info!("CreateUserRequest");
-                        let cmd_db = db.acquire().await?;
-
-                        Frame::unpack_msg_frame(&mut data)?;
-                        //
-                        info!("{:?}", String::from_utf8(data.to_ascii_lowercase().to_vec()));
-                        let token = String::from_utf8(data.to_ascii_lowercase().to_vec())
-                            .map_err(|e| Error::Eor(anyhow::anyhow!("{}", e)))?;
-                        // cmd_db.create_user(token,1 as EntityId).await.unwrap();
-
-                        let ret = create_cmd_user(cmd_db, token, 1 as EntityId).await;
-                        let mut resp = BytesMut::new();
-                        build_cmd_response(ret, &mut resp)?;
-
-                        let sent = socket
-                            .send_to(resp.as_ref(), &peer)
-                            .await
-                            .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
-                        info!("Sent {} out of {} bytes to {}", sent, n, peer);
+            for _i in 0..len {
+                if let Some(node) = nodes.pop_front() {
+                    if now.sub(node.last_update) < NODE_EXPIRE {
+                        nodes.push_back(node);
                     }
-                    Frame::CreateUserResponse => {}
-                    Frame::UnKnown => {}
                 }
             }
-            // Ok(()) as Result<()>
-        })
-        .detach()
-    );
+            drop(nodes);
+        }
+        Ok(()) as Result<()>
+    });
 
+    spawn(async move {
+        let socket = UdpSocket::bind(DEFAULT_COMMAND_ADDR).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+        let mut buf = vec![0u8; 1024];
+
+        info!("Listening on {}", socket.local_addr().unwrap()); // TODO
+
+        loop {
+            let (n, peer) = socket.recv_from(&mut buf).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+
+            let mut data = BytesMut::new();
+            data.extend_from_slice(&buf[..n]);
+
+            match Frame::get_frame_type(&data.as_ref()) {
+                Frame::CreateUserRequest => {
+                    info!("CreateUserRequest");
+                    let cmd_db = db.acquire().await?;
+
+                    Frame::unpack_msg_frame(&mut data)?;
+                    //
+                    info!("{:?}", String::from_utf8(data.to_ascii_lowercase().to_vec()));
+                    let token = String::from_utf8(data.to_ascii_lowercase().to_vec())
+                        .map_err(|e| Error::Eor(anyhow::anyhow!("{}", e)))?;
+                    // cmd_db.create_user(token,1 as EntityId).await.unwrap();
+
+                    let ret = create_cmd_user(cmd_db, token, 1 as EntityId).await;
+                    let mut resp = BytesMut::new();
+                    build_cmd_response(ret, &mut resp)?;
+
+                    let sent = socket
+                        .send_to(resp.as_ref(), &peer)
+                        .await
+                        .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+                    info!("Sent {} out of {} bytes to {}", sent, n, peer);
+                }
+                Frame::CreateUserResponse => {}
+                Frame::UnKnown => {}
+            }
+        }
+        Ok(()) as Result<()>
+    });
+    Ok(())
+}
+pub async fn acmed_service(acmed_config: &AcmeConfig, sender: async_channel::Sender<bool>) -> Result<()> {
     let acmed_config = acmed_config.clone();
-    tasks.push(
-        Task::<Result<()>>::local(async move {
-            // let config = acmed::config::load().map_err(|e| {error!("loading acme config: {:?}",e);e})?;
-            debug!("Loaded runtime config: {:?}", &acmed_config);
+    spawn(async move {
+        // let config = acmed::config::load().map_err(|e| {error!("loading acme config: {:?}",e);e})?;
+        debug!("Loaded runtime config: {:?}", &acmed_config);
 
-            sleep(Duration::from_secs(7)).await;
-            let sender = sender.connect().await;
-            // Channel has room for 1 element so this will always succeed
-            let mut reload = false;
-            loop {
-                // sleep(Duration::from_secs(604800)).await; // checking every week
-                // if acmed::renew::run(&acmed_config.clone()).is_ok(){
-                //     sender.try_send(true).map_err(|e|{
-                //         error!("send restart signal error: {:?}",e);
-                //         Error::Eor(anyhow::anyhow!("{:?}",e))
-                //
-                //     })?;
-                // }
+        sleep(Duration::from_secs(7)).await;
+        // let sender = sender.connect().await;
+        // Channel has room for 1 element so this will always succeed
+        let mut reload = false;
+        loop {
+            // sleep(Duration::from_secs(604800)).await; // checking every week
+            // if acmed::renew::run(&acmed_config.clone()).is_ok(){
+            //     sender.try_send(true).map_err(|e|{
+            //         error!("send restart signal error: {:?}",e);
+            //         Error::Eor(anyhow::anyhow!("{:?}",e))
+            //
+            //     })?;
+            // }
 
-                sleep(Duration::from_secs(604800)).await; // checking every week
-                                                          // sleep(Duration::from_secs(3 * 60)).await; // test
-                match acmed::renew::run(&acmed_config.clone()) {
-                    Ok(_) => {
-                        info!("tls certs has been renewed");
-                        reload = true
-                    }
-                    Err(e) => {
-                        match e {
-                            Error::AcmeLimited => {
-                                warn!("hitting rate limit of LetsEncrypt");
-                                reload = true // test
-                                              // reload = false//production
-                            }
-                            _ => {
-                                error!("renewing tls certs error: {:?}", e);
-                                reload = false
-                            }
+            sleep(Duration::from_secs(604800)).await; // checking every week
+            // sleep(Duration::from_secs(90)).await; // test
+            match acmed::renew::run(&acmed_config.clone()) {
+                Ok(_) => {
+                    info!("tls certs has been renewed");
+                    reload = true
+                }
+                Err(e) => {
+                    match e {
+                        Error::AcmeLimited => {
+                            warn!("hitting rate limit of LetsEncrypt");
+                            reload = true // test
+                                          // reload = false//production
+                        }
+                        _ => {
+                            error!("renewing tls certs error: {:?}", e);
+                            reload = false
                         }
                     }
                 }
-                if reload {
-                    panic!("that is terrible");
-                    let p = Command::new("killall").arg("-e").arg("ostrich_node").status().await?;
-                    if p.signal().is_some() {
-                        error!("failed to killall ostrich node process");
-                    }
-                    info!("ostrich node process has been killed");
-                    sleep(Duration::from_secs(10)).await; // test
-
-                    info!("start sending reload signal");
-                    sender.try_send(true).map_err(|e| {
-                        error!("send reload signal error: {:?}", e);
-                        Error::Eor(anyhow::anyhow!("{:?}", e))
-                    })?;
-                    info!("reload signal has been sent")
-                }
-
-                // let  p = Command::new("systemctl")
-                //     .arg("restart")
-                //     .arg("nginx")
-                //     .status()
-                //     .await?;
-                // if p.signal().is_some(){
-                //     error!("failed to restart nginx service");
-                //     // std::process::exit(1)
-                // }
-                // sleep(Duration::from_secs(7)).await;
-                //
-                // let  _p = Command::new("nohup")
-                //     .arg("/usr/bin/ostrich_node")
-                //     .arg("-c")
-                //     .arg("/etc/ostrich/conf/ostrich.json")
-                //     .stdout(Stdio::null())
-                //     .stderr(Stdio::null())
-                //     .spawn()?;
-                // .arg(">/dev/null")
-                // .arg("2>&1")
-                // .arg("&")
-                // .status()
-                // .await?;
-                // if p.signal().is_some(){
-                //     error!("failed to restart ostrich node service");
-                //     // std::process::exit(2)
-                // }
             }
-            // Ok(()) as Result<()>
-        })
-        .detach()
-    );
+            if reload {
+                // let p = Command::new("killall").arg("-e").arg("ostrich_node").status().await?;
+                // if p.signal().is_some() {
+                //     error!("failed to killall ostrich node process");
+                // }
+                // info!("ostrich node process has been killed");
+                // sleep(Duration::from_secs(10)).await; // test
+                let p = Command::new("nginx").arg("-s").arg("reload").status().await?;
+                if p.signal().is_some() {
+                    error!("failed to reload nginx service");
+                    std::process::exit(1)
+                }
+                sleep(Duration::from_secs(7)).await;
 
-    for task in tasks {
-        task.await.unwrap()?;
-    }
-    Ok(())
+                info!("start sending reload signal");
+                sender.send(true).await.map_err(|e| {
+                    error!("send reload signal error: {:?}", e);
+                    Error::Eor(anyhow::anyhow!("{:?}", e))
+                })?;
+                info!("reload signal has been sent")
+            }
+        }
+        Ok(()) as Result<()>
+    });
+    Ok(()) as Result<()>
 }

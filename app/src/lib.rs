@@ -5,7 +5,6 @@ pub mod init;
 use bytes::BytesMut;
 use command::frame::Frame;
 use errors::{Error, Result, ServiceError};
-use log::LevelFilter;
 use service::{
     api::users::{User, USER_TOKEN_MAX_LEN},
     db::model::{EntityId, ProvideAuthn},
@@ -85,11 +84,14 @@ pub struct LogLevel {
 //         level
 //     }
 // }
+use log::LevelFilter;
+use log4rs::{
+    append::rolling_file::policy::compound::{
+        roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger, CompoundPolicy
+    },
+    filter::threshold::ThresholdFilter
+};
 use std::{fmt, fs};
-use log4rs::append::rolling_file::policy::compound::roll::fixed_window::FixedWindowRoller;
-use log4rs::append::rolling_file::policy::compound::trigger::size::SizeTrigger;
-use log4rs::append::rolling_file::policy::compound::CompoundPolicy;
-use log4rs::filter::threshold::ThresholdFilter;
 
 impl fmt::Display for LogLevel {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -135,7 +137,7 @@ fn from_usize(u: usize) -> LevelFilter {
     }
 }
 pub fn log_init<P: AsRef<Path>>(level: u8, log_path: P) -> Result<()> {
-    // let log_level = LogLevel { level };
+    // use std::io::Write;
     // env_logger::Builder::new()
     //     .format(|buf, record| {
     //         writeln!(
@@ -148,68 +150,43 @@ pub fn log_init<P: AsRef<Path>>(level: u8, log_path: P) -> Result<()> {
     //             record.args()
     //         )
     //     })
-    //     .filter(None, LevelFilter::Error)
+    //     .filter(None, LevelFilter::Debug)
     //     // .filter(Some("logger_example"), LevelFilter::Debug)
     //     .init();
 
-    // use log4rs::{
-    //     append::file::FileAppender,
-    //     config::{Appender, Config, Root},
-    //     encode::pattern::PatternEncoder
-    // };
-    use log::LevelFilter;
     use log4rs::{
-        append::rolling_file::{policy, RollingFileAppender},
-        config::{Appender, Config, Logger, Root},
+        append::rolling_file::{ RollingFileAppender},
+        config::{Appender, Config,  Root},
         encode::pattern::PatternEncoder
     };
     const K: u64 = 1024;
     const M: u64 = K * K;
-    const FILE_SIZE: u64 = 10 * M;
-    const FILE_COUNT: u32 = 10;
+    const FILE_SIZE: u64 = 5 * M;//as max log file size to roll
+    const FILE_COUNT: u32 = 7;
 
-    let window_size = 3; // log0, log1, log2
-    let fixed_window_roller =
-        FixedWindowRoller::builder().build("log{}",window_size).unwrap();
-    let size_limit = 5 * M; // 5KB as max log file size to roll
-    let size_trigger = SizeTrigger::new(size_limit);
-    let compound_policy = CompoundPolicy::new(Box::new(size_trigger),Box::new(fixed_window_roller));
+    // let window_size = 3; // log0, log1, log2
+    let fixed_window_roller = FixedWindowRoller::builder().build("log{}", FILE_COUNT).unwrap();
+    let size_trigger = SizeTrigger::new(FILE_SIZE);
+    let compound_policy = CompoundPolicy::new(Box::new(size_trigger), Box::new(fixed_window_roller));
 
     let config = Config::builder()
         .appender(
-            Appender::builder()
-                .filter(Box::new(ThresholdFilter::new(from_usize(level as usize))))
-                .build(
-                    "logfile",
-                    Box::new(
-                        RollingFileAppender::builder()
-                            .encoder(Box::new(PatternEncoder::new("[{d} {l} {M}] {m} in {f}:{L}\n")))
-                            .build(&log_path, Box::new(compound_policy)).unwrap(),
-                    ),
-                ),
+            Appender::builder().filter(Box::new(ThresholdFilter::new(from_usize(level as usize)))).build(
+                "logfile",
+                Box::new(
+                    RollingFileAppender::builder()
+                        .encoder(Box::new(PatternEncoder::new("[{d} {l} {M}] {m} in {f}:{L}\n")))
+                        .build(&log_path, Box::new(compound_policy))
+                        .unwrap()
+                )
+            )
         )
-        .build(
-            Root::builder()
-                .appender("logfile")
-                .build(from_usize(level as usize)),
-        ).unwrap();
+        .build(Root::builder().appender("logfile").build(from_usize(level as usize)))
+        .unwrap();
     log4rs::init_config(config).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
     log_panics::init();
-    // Logger::try_with_env()
-    //     .unwrap()
-    //     .format(detailed_format)
-    //     .log_to_file(FileSpec::default().use_timestamp(true).directory(&log_path))
-    //     .write_mode(WriteMode::BufferAndFlushWith(
-    //         10 * 1024,
-    //         std::time::Duration::from_millis(600),
-    //     ))
-    //     .rotate(
-    //         Criterion::Age(Age::Day),
-    //         Naming::Timestamps,
-    //         Cleanup::KeepLogFiles(3),
-    //     )
-    //     .start()
-    //     .unwrap_or_else(|e| panic!("Logger initialization failed with {:?}", e));
+
+
     Ok(())
 }
 // one possible implementation of walking a directory only visiting files

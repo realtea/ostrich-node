@@ -4,22 +4,76 @@ pub mod hyper_compat {
     use std::{
         net::SocketAddr,
         pin::Pin,
-        task::{Context, Poll}
+        task::{self, Context, Poll}
     };
 
     use crate::{api::state::State, db::Db};
-    use glommio::{
-        net::{TcpListener, TcpStream},
-        Local, Task
-    };
+    // use glommio::{
+    //     net::{TcpListener, TcpStream},
+    //     Local, Task
+    // };
     use hyper::{server::conn::Http, Body, Request, Response};
     use sqlx::{pool::PoolConnection, Sqlite};
     use std::{io, sync::Arc};
     use tokio::io::ReadBuf;
     // use crate::http::handler::serve;
+    use async_std::{
+        net::{TcpListener, TcpStream},
+        task::spawn
+    };
     use futures_lite::StreamExt;
     use log::error;
     // use errors::Result;
+    // pub async fn serve_register<A, T, S, F, R>(
+    //     addr: A,
+    //     mut service: S,
+    //     // max_connections: usize,
+    //     state: Arc<State<T>>
+    // ) -> io::Result<()>
+    // where
+    //     S: FnMut(Request<Body>, Arc<State<T>>) -> F + 'static + Copy +Send,
+    //     F: Future<Output = Result<Response<Body>, R>> + Send + 'static,
+    //     R: std::error::Error + 'static + Send + Sync,
+    //     A: Into<SocketAddr>,
+    //     T: Send + Sync + 'static + Db<Conn = PoolConnection<Sqlite>>
+    // {
+    //     let listener = TcpListener::bind(addr.into()).await?;
+    //     // let state = state.clone();
+    //     // let conn_control = Rc::new(Semaphore::new(max_connections as _));
+    //     // loop {
+    //     // let mut incoming = listener.incoming();
+    //     // while let Some(Ok(stream)) = incoming.next().await {
+    //     //     // Err(x) => {
+    //     //     //     return Err(x.into());
+    //     //     // }
+    //     //     // Ok(stream) => {
+    //     //     let addr = stream.local_addr()?;
+    //     //     let state = state.clone();
+    //     //     spawn(async move {
+    //     //         // let _permit = conn_control.acquire_permit(1).await;
+    //     //         if let Err(x) = Http::new()
+    //     //             .with_executor(HyperExecutor)
+    //     //             .serve_connection(HyperStream(stream), service_fn(|req| service(req, state.clone())))
+    //     //             .await
+    //     //         {
+    //     //             error!("Stream from {:?} failed with error {:?}", addr, x);
+    //     //         }
+    //     //     });
+    //
+    //
+    //
+    //         let make_svc = make_service_fn(|_conn| async move{ Ok::<_, Infallible>(service_fn(|req| service(req,
+    // state))) });         let server = Server::builder(HyperListener(listener))
+    //             .executor(HyperExecutor)
+    //             .serve(make_svc);
+    //         server.await;
+    //         // }
+    //     // }
+    //     Ok(())
+    //     // }
+    // }
+
+
     pub async fn serve_register<A, T, S, F, R>(
         addr: A,
         mut service: S,
@@ -27,13 +81,13 @@ pub mod hyper_compat {
         state: Arc<State<T>>
     ) -> io::Result<()>
     where
-        S: FnMut(Request<Body>, Arc<State<T>>) -> F + 'static + Copy,
-        F: Future<Output = Result<Response<Body>, R>> + 'static,
+        S: FnMut(Request<Body>, Arc<State<T>>) -> F + 'static + Copy + Send,
+        F: Future<Output = Result<Response<Body>, R>> + Send + 'static,
         R: std::error::Error + 'static + Send + Sync,
         A: Into<SocketAddr>,
         T: Send + Sync + 'static + Db<Conn = PoolConnection<Sqlite>>
     {
-        let listener = TcpListener::bind(addr.into())?;
+        let listener = TcpListener::bind(addr.into()).await?;
         // let conn_control = Rc::new(Semaphore::new(max_connections as _));
         // loop {
         let mut incoming = listener.incoming();
@@ -44,7 +98,7 @@ pub mod hyper_compat {
             // Ok(stream) => {
             let addr = stream.local_addr()?;
             let state = state.clone();
-            Local::local(async move {
+            spawn(async move {
                 // let _permit = conn_control.acquire_permit(1).await;
                 if let Err(x) = Http::new()
                     .with_executor(HyperExecutor)
@@ -53,34 +107,46 @@ pub mod hyper_compat {
                 {
                     error!("Stream from {:?} failed with error {:?}", addr, x);
                 }
-            })
-            .detach();
+            });
             // }
         }
         Ok(())
         // }
     }
 
+
     #[derive(Clone)]
-    struct HyperExecutor;
+    pub struct HyperExecutor;
 
     impl<F> hyper::rt::Executor<F> for HyperExecutor
     where
-        F: Future + 'static,
-        F::Output: 'static
+        F: Future + Send + 'static,
+        F::Output: Send + 'static
     {
         fn execute(&self, fut: F) {
-            Task::local(fut).detach();
+            spawn(fut);
         }
     }
 
-    struct HyperStream(pub TcpStream);
+    pub struct HyperListener(pub TcpListener);
+
+    impl hyper::server::accept::Accept for HyperListener {
+        type Conn = HyperStream;
+        type Error = io::Error;
+
+        fn poll_accept(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Result<Self::Conn, Self::Error>>> {
+            let stream = task::ready!(Pin::new(&mut self.0.incoming()).poll_next(cx)).unwrap()?;
+            Poll::Ready(Some(Ok(HyperStream(stream))))
+        }
+    }
+
+    pub struct HyperStream(pub TcpStream);
 
     impl tokio::io::AsyncRead for HyperStream {
         fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
             Pin::new(&mut self.0).poll_read(cx, buf.initialize_unfilled()).map(|n| {
                 if n.is_ok() {
-                    buf.advance(n?);
+                    buf.advance(n.unwrap());
                 }
                 Ok(())
             })

@@ -74,7 +74,11 @@ where
         (&Method::POST, "/ostrich/api/server/update") => {
             handle_server_update(req, state.clone()).await.map_err(|e| e.into())
         }
-
+        (&Method::POST, "/ostrich/api/test") => {
+            let response = Response::new(Body::from("hello world"));
+            Ok(response)
+            // handle_server_update(req, state.clone()).await.map_err(|e| e.into())
+        }
         (&Method::GET, _) if req.uri().path().starts_with("/.well-known/acme-challenge") => {
             handle_acme_challenge(req).await.map_err(|e| e.into())
         }

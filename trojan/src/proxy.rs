@@ -1,6 +1,8 @@
-use crate::Address;
-// use async_std::net::{TcpListener, TcpStream, UdpSocket};
-// use async_std::task::spawn;
+use crate::{load_certs, load_keys, Address};
+use async_std::{
+    net::{TcpListener, TcpStream, UdpSocket},
+    task::spawn
+};
 use async_tls::{server::TlsStream, TlsAcceptor};
 use bytes::BufMut;
 use errors::{Error, Result};
@@ -9,56 +11,115 @@ use futures_util::{
 };
 use log::{debug, error, info};
 use std::{
+    io,
     net::{Ipv6Addr, SocketAddr, SocketAddrV6},
     sync::Arc
 };
 
 use futures_lite::io::copy;
-use glommio::{
-    net::{TcpListener, TcpStream, UdpSocket},
-    Local
-};
+use rustls::{NoClientAuth, ServerConfig};
+// use glommio::{
+//     channels::shared_channel::{SharedReceiver, SharedSender},
+//     net::{TcpListener, TcpStream, UdpSocket},
+//     Local
+// };
 
 #[derive(Clone)]
 pub struct ProxyBuilder {
     addr: String,
-    acceptor: TlsAcceptor,
+    key: String,
+    cert: String,
     authenticator: Vec<String>,
     fallback: String
 }
 
+
 impl ProxyBuilder {
-    pub fn new(addr: String, acceptor: TlsAcceptor, authenticator: Vec<String>, fallback: String) -> Self {
-        Self { addr, acceptor, authenticator, fallback }
+    pub fn new(addr: String, key: String, cert: String, authenticator: Vec<String>, fallback: String) -> Self {
+        Self { addr, key, cert, authenticator, fallback }
     }
 
-    pub async fn start(self) -> Result<()> {
-        let listener = TcpListener::bind(&self.addr).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+    pub async fn start(self, receiver: async_channel::Receiver<bool>) -> Result<()> {
+        // let listener = TcpListener::bind(&self.addr).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+        let listener = TcpListener::bind(&self.addr).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
         info!("proxy started at: {}", self.addr);
-        let mut incoming = listener.incoming();
 
-        while let Some(Ok(incoming_stream)) = incoming.next().await {
-            // spawn(process_stream(
-            //     acceptor,
-            //     incoming_stream,
-            //     shared_authenticator.clone(),
-            //     self.fallback.clone(),
-            // ));
-            let shared_authenticator = Arc::new(self.authenticator.clone());
-            let acceptor = Arc::new(self.acceptor.clone());
-            let fallback = self.fallback.clone();
-            Local::local(async move {
-                process_stream(acceptor.clone(), incoming_stream, shared_authenticator.clone(), fallback.clone()).await
-            })
-            .detach();
+        let certs = load_certs(self.cert.as_ref())?;
+        let key = load_keys(self.key.as_ref())?;
+        let verifier = NoClientAuth::new();
+        let mut tls_config = ServerConfig::new(verifier);
+        tls_config.set_single_cert(certs, key).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
+        let mut tls_acceptor = TlsAcceptor::from(Arc::new(tls_config));
+
+        let mut incoming = listener.incoming();
+        use futures::select;
+        // let mut receiver = receiver.into_stream();
+        // let incoming_stream = incoming.next().fuse().or_else();
+        // loop {
+        //     select! {
+        //         incoming_stream = incoming.next().fuse() => {
+        //             let shared_authenticator = Arc::new(self.authenticator.clone());
+        //             let acceptor = Arc::new(self.acceptor.clone());
+        //             let fallback = self.fallback.clone();
+        //             let incoming_stream = incoming_stream.unwrap().unwrap();
+        //             Local::local(async move {
+        //                 process_stream(acceptor.clone(), incoming_stream, shared_authenticator.clone(),
+        // fallback.clone()).await             })
+        //             .detach();
+        //         },
+        //         _ = receiver.next().fuse() =>{
+        //             warn!("proxy process do exit");
+        //             break
+        //         }
+        //     }
+        // }
+        loop {
+            let mut receiver = receiver.clone();
+            select! {
+                incoming_stream = incoming.next().fuse() =>  {
+                    // Some(incoming_stream) =>{
+                    let incoming_stream = incoming_stream.ok_or(Error::Eor(anyhow::anyhow!("got an empty incoming stream")))??;
+                    spawn(process_stream(
+                        tls_acceptor.clone(),
+                        incoming_stream,
+                        self.authenticator.clone(),
+                        self.fallback.clone(),
+                    ));
+                    },
+                _ = receiver.next().fuse() =>{
+                    let certs = load_certs(self.cert.as_ref())?;
+                    let key = load_keys(self.key.as_ref())?;
+                    let verifier = NoClientAuth::new();
+                    let mut tls_config = ServerConfig::new(verifier);
+                    tls_config.set_single_cert(certs, key).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
+                    tls_acceptor = TlsAcceptor::from(Arc::new(tls_config));
+                    info!("tls config has been reloaded");
+                }
+            }
         }
+        // while let Some(Ok(incoming_stream)) = incoming.next().await {
+        //     // spawn(process_stream(
+        //     //     acceptor,
+        //     //     incoming_stream,
+        //     //     shared_authenticator.clone(),
+        //     //     self.fallback.clone(),
+        //     // ));
+        //     let shared_authenticator = Arc::new(self.authenticator.clone());
+        //     let acceptor = Arc::new(self.acceptor.clone());
+        //     let fallback = self.fallback.clone();
+        //     Local::local(async move {
+        //         process_stream(acceptor.clone(), incoming_stream, shared_authenticator.clone(),
+        // fallback.clone()).await     })
+        //     .detach();
+        // }
         Ok(())
     }
 }
 /// start TLS stream at addr to target
-async fn process_stream(
-    acceptor: Arc<TlsAcceptor>, raw_stream: TcpStream, authenticator: Arc<Vec<String>>, fallback: String
-) {
+// async fn process_stream(
+//     acceptor: Arc<TlsAcceptor>, raw_stream: TcpStream, authenticator: Arc<Vec<String>>, fallback: String
+// )
+async fn process_stream(acceptor: TlsAcceptor, raw_stream: TcpStream, authenticator: Vec<String>, fallback: String) {
     let source = raw_stream.peer_addr().map(|addr| addr.to_string()).unwrap_or_else(|_| "".to_owned());
 
     debug!("new connection from {}", source);
@@ -200,8 +261,11 @@ async fn redirect_fallback(source: &str, target: &str, tls_stream: TlsStream<Tcp
     };
     Ok(())
 }
+// async fn proxy(
+//     mut tls_stream: TlsStream<TcpStream>, source: String, authenticator: Arc<Vec<String>>, fallback: String
+// )
 async fn proxy(
-    mut tls_stream: TlsStream<TcpStream>, source: String, authenticator: Arc<Vec<String>>, fallback: String
+    mut tls_stream: TlsStream<TcpStream>, source: String, authenticator: Vec<String>, fallback: String
 ) -> Result<()> {
     let mut passwd_buf = [0u8; HASH_STR_LEN];
     let len = tls_stream.read(&mut passwd_buf).await?;
@@ -289,7 +353,10 @@ async fn proxy(
             debug!("UdpAssociate target addr: {:?}", addr);
 
             const RELAY_BUFFER_SIZE: usize = 0x4000;
+            // let outbound = UdpSocket::bind(SocketAddr::from(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0)))
+            //     .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
             let outbound = UdpSocket::bind(SocketAddr::from(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0)))
+                .await
                 .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
             let (mut tls_stream_reader, mut tls_stream_writer) = tls_stream.split();
 

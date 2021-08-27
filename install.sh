@@ -227,6 +227,47 @@ http {
 }
 
 EOF
+
+cat > /etc/ostrich/conf/nginx.conf <<-EOF
+user  root;
+worker_processes  1;
+error_log  /var/log/nginx/error.log warn;
+pid        /var/run/nginx.pid;
+events {
+    worker_connections  1024;
+}
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+    log_format  main  '\$remote_addr - \$remote_user [\$time_local] "\$request"'
+                      '\$status \$body_bytes_sent "\$http_referer"'
+                      '"\$http_user_agent" "\$http_x_forwarded_for"';
+    access_log  /var/log/nginx/access.log  main;
+    sendfile        on;
+    #tcp_nopush     on;
+    keepalive_timeout  120;
+    client_max_body_size 20m;
+    #gzip  on;
+    server {
+        listen       80;
+        server_name  $your_domain;
+        root /usr/share/nginx/html;
+        index index.php index.html index.htm;
+        location /.well-known/acme-challenge/ {
+            proxy_set_header  X-Forwarded-Host \$host;
+            proxy_set_header  X-Forwarded-Proto \$scheme;
+            proxy_set_header  X-Real-IP  \$remote_addr;
+            proxy_set_header  X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header Host \$http_host;
+            proxy_redirect off;
+            expires off;
+            sendfile off;
+            proxy_pass http://127.0.0.1:22751;
+        }
+    }
+}
+
+EOF
     #设置伪装站
     rm -rf /usr/share/nginx/html/*
     cd /usr/share/nginx/html/
@@ -309,23 +350,23 @@ cat > /etc/ostrich/conf/acmed.json <<-EOF
    }
 }
 EOF
-	#增加启动脚本
-cat > ${systempwd}ostrich_service.service <<-EOF
-[Unit]
-Description=ostrich service
-After=network.target
-
-[Service]
-Type=simple
-PIDFile=/etc/ostrich/ostrich_service.pid
-ExecStart=/usr/bin/ostrich_service -c "/etc/ostrich/conf/ostrich.json"
-ExecReload=
-ExecStop=
-PrivateTmp=true
-
-[Install]
-WantedBy=multi-user.target
-EOF
+#	#增加启动脚本
+#cat > ${systempwd}ostrich_service.service <<-EOF
+#[Unit]
+#Description=ostrich service
+#After=network.target
+#
+#[Service]
+#Type=simple
+#PIDFile=/etc/ostrich/ostrich_service.pid
+#ExecStart=/usr/bin/ostrich_service -c "/etc/ostrich/conf/ostrich.json"
+#ExecReload=
+#ExecStop=
+#PrivateTmp=true
+#
+#[Install]
+#WantedBy=multi-user.target
+#EOF
 
 	#增加启动脚本
 cat > ${systempwd}ostrich_node.service <<-EOF
@@ -345,16 +386,16 @@ PrivateTmp=true
 WantedBy=multi-user.target
 EOF
 
-    chmod +x ${systempwd}ostrich_service.service
+#    chmod +x ${systempwd}ostrich_service.service
     chmod +x ${systempwd}ostrich_node.service
   #	systemctl start trojan.service
-    systemctl enable ostrich_service.service
+#    systemctl enable ostrich_service.service
     systemctl enable ostrich_node.service
     cp ${working_dir}/ostrich/ostrich_node  /usr/bin
-    cp ${working_dir}/ostrich/ostrich_service  /usr/bin
+#    cp ${working_dir}/ostrich/ostrich_service  /usr/bin
     cp ${working_dir}/ostrich/ostrich_cli  /usr/bin
     chmod +x /usr/bin/ostrich_node
-    chmod +x /usr/bin/ostrich_service
+#    chmod +x /usr/bin/ostrich_service
     chmod +x /usr/bin/ostrich_cli
 #    systemctl start ostrich_service.service
     green "======================================================================"
@@ -374,9 +415,9 @@ function remove_ostrich(){
     red          "同时卸载安装的Nginx"
     red "================================"
     systemctl stop ostrich_node
-    systemctl stop ostrich_service
+#    systemctl stop ostrich_service
     systemctl disable ostrich_node
-    systemctl disable ostrich_service
+#    systemctl disable ostrich_service
     rm -f ${systempwd}trojan.service
     if [ "$release" == "centos" ]; then
         yum remove -y nginx
