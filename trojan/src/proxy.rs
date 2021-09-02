@@ -1,3 +1,4 @@
+#![allow(unreachable_code)]
 use crate::{load_certs, load_keys, Address};
 use async_std::{
     net::{TcpListener, TcpStream, UdpSocket},
@@ -378,7 +379,7 @@ async fn proxy(
             let client_to_server = Box::pin(async {
                 let mut buf = [0u8; RELAY_BUFFER_SIZE];
                 loop {
-                    error!("client_to_server never end");
+                    // error!("client_to_server never end");
                     let header = UdpAssociateHeader::read_from(&mut tls_stream_reader).await?;
                     if header.payload_len == 0 {
                         break
@@ -406,7 +407,7 @@ async fn proxy(
             let server_to_client = Box::pin(async {
                 let mut buf = [0u8; RELAY_BUFFER_SIZE];
                 loop {
-                    error!("server_to_client never end");
+                    // error!("server_to_client never end");
                     let (len, dst) =
                         outbound.recv_from(&mut buf).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
                     if len == 0 {

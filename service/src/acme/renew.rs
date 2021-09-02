@@ -2,17 +2,13 @@ use acmed::{
     chall,
     http_responses::{BAD_REQUEST, NOT_FOUND}
 };
-use anyhow::anyhow;
 use errors::Result;
 // use hyper::{Body, Request, Response, StatusCode};
-use log::{debug, info};
-use std::{fs, path::Path};
-use tide::{Response, Body,http::StatusCode};
-use crate::api::state::State;
-use crate::db::Db;
-use sqlx::pool::PoolConnection;
-use sqlx::Sqlite;
-use std::sync::Arc;
+use crate::{api::state::State, db::Db};
+use log::{debug, error};
+use sqlx::{pool::PoolConnection, Sqlite};
+use std::{fs, path::Path, sync::Arc};
+use tide::{http::StatusCode, Body, Response};
 
 #[inline]
 fn bad_request() -> Result<Response> {
@@ -38,10 +34,11 @@ fn not_found() -> Result<Response> {
 }
 
 pub async fn challenge_acme<T>(req: tide::Request<Arc<State<T>>>) -> Result<Response>
-    where T: Db<Conn = PoolConnection<Sqlite>> {
+where T: Db<Conn = PoolConnection<Sqlite>> {
     // debug!("REQ: {:?}", req.query());
-    let token = req.url().path().split("/").last().ok_or_else(|| anyhow!("Failed to extract url token")).unwrap();
-    info!("acme: {:?}", token.to_string());
+    // let token = req.url().path().split("/").last().ok_or_else(|| anyhow!("Failed to extract url token")).unwrap();
+    let token = req.param("token").unwrap_or("");
+    error!("acme: {:?}", token.to_string());
     if !chall::valid_token(&token) {
         return bad_request()
     }

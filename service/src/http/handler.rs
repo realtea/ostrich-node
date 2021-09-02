@@ -1,30 +1,30 @@
 use crate::{
+    acme::renew::challenge_acme,
     api::{
         state::State,
-        users::{create_user, get_available_server, update_available_server, User}
+        users::{create_user, get_available_server, get_available_servers, update_available_server, User}
     },
     db::Db
 };
-
-use crate::acme::renew::challenge_acme;
 use errors::{Error, Result, ServiceError};
-// use hyper::{header, Body, Method, Request, Response, StatusCode};
-use log::{debug, warn};
+use log::warn;
 use serde::{Deserialize, Serialize};
 use serde_repr::*;
+use serde_with::skip_serializing_none;
 use sqlx::{pool::PoolConnection, Sqlite};
 use std::sync::Arc;
-use crate::api::users::get_available_servers;
-use tide::{Request, Body, Response,http::headers,http::StatusCode};
+use tide::{
+    http::{headers, StatusCode},
+    Body, Response
+};
 
-// static INTERNAL_SERVER_ERROR: &[u8] = b"Internal Server Error";
-static NOTFOUND: &[u8] = b"Res Not Found";
-// static POST_DATA: &str = r#"{"original": "data"}"#;
-
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize)]
 pub struct ServerAddr {
     pub(crate) ip: String,
-    pub(crate) port: u16
+    pub(crate) port: u16,
+    pub country: Option<String>,
+    pub city: Option<String>
 }
 
 #[derive(Serialize, Deserialize)]
@@ -133,7 +133,7 @@ fn build_response(r: Result<ResponseEntity>) -> Result<Response> {
     Ok(resp)
 }
 
-pub async fn handle_create_user<T>(req:  tide::Request<Arc<State<T>>>) -> Result<Response>
+pub async fn handle_create_user<T>(req: tide::Request<Arc<State<T>>>) -> Result<Response>
 where T: Db<Conn = PoolConnection<Sqlite>> {
     let ret = create_user(req).await;
 
@@ -142,7 +142,7 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
     Ok(response)
 }
 
-pub async fn handle_server_query<T>(req:  tide::Request<Arc<State<T>>>) -> Result<Response>
+pub async fn handle_server_query<T>(req: tide::Request<Arc<State<T>>>) -> Result<Response>
 where T: Db<Conn = PoolConnection<Sqlite>> {
     let ret = get_available_server(req).await;
 
@@ -150,8 +150,8 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
 
     Ok(response)
 }
-pub async fn handle_server_lists_query<T>(req:  tide::Request<Arc<State<T>>>) -> Result<Response>
-    where T: Db<Conn = PoolConnection<Sqlite>> {
+pub async fn handle_server_lists_query<T>(req: tide::Request<Arc<State<T>>>) -> Result<Response>
+where T: Db<Conn = PoolConnection<Sqlite>> {
     let ret = get_available_servers(req).await;
 
     let response = build_response(ret)?;
@@ -159,17 +159,17 @@ pub async fn handle_server_lists_query<T>(req:  tide::Request<Arc<State<T>>>) ->
     Ok(response)
 }
 
-pub async fn handle_server_update<T>(req:  tide::Request<Arc<State<T>>>) -> Result<Response>
+pub async fn handle_server_update<T>(req: tide::Request<Arc<State<T>>>) -> Result<Response>
 where T: Db<Conn = PoolConnection<Sqlite>> {
-    let ret = update_available_server(req, ).await;
+    let ret = update_available_server(req).await;
 
     let response = build_response(ret)?;
 
     Ok(response)
 }
 
-pub async fn handle_acme_challenge<T>(req:  tide::Request<Arc<State<T>>>) -> Result<Response>
-    where T: Db<Conn = PoolConnection<Sqlite>> {
+pub async fn handle_acme_challenge<T>(req: tide::Request<Arc<State<T>>>) -> Result<Response>
+where T: Db<Conn = PoolConnection<Sqlite>> {
     challenge_acme(req).await
     // let response = build_response(ret)?;
     //

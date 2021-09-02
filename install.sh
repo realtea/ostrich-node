@@ -145,6 +145,7 @@ http {
             proxy_redirect off;
             expires off;
             sendfile off;
+            proxy_http_version 1.1;
             proxy_pass http://127.0.0.1:22751;
         }
     }
@@ -185,6 +186,7 @@ http {
             proxy_redirect off;
             expires off;
             sendfile off;
+            proxy_http_version 1.1;
             proxy_pass http://127.0.0.1:22751;
         }
         location /ostrich/api/ {
@@ -196,6 +198,7 @@ http {
             proxy_redirect off;
             expires off;
             sendfile off;
+            proxy_http_version 1.1;
             proxy_pass http://127.0.0.1:22751;
         }
 
@@ -262,6 +265,7 @@ http {
             proxy_redirect off;
             expires off;
             sendfile off;
+            proxy_http_version 1.1;
             proxy_pass http://127.0.0.1:22751;
         }
     }

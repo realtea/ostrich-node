@@ -1,9 +1,13 @@
+#![allow(unreachable_code)]
 #![warn(unused_must_use)]
 use crate::{build_cmd_response, create_cmd_user, DEFAULT_COMMAND_ADDR, DEFAULT_REGISTER_PORT};
-
-// use async_tls::TlsAcceptor;
+use acmed::{config::Config as AcmeConfig, errors::Context, sandbox};
+use async_process::Command;
+use async_std::{
+    net::UdpSocket,
+    task::{sleep, spawn}
+};
 use bytes::BytesMut;
-// use clap::{App, Arg};
 use command::frame::Frame;
 use errors::{Error, Result};
 use log::{info, warn};
@@ -17,35 +21,17 @@ use service::{
     db::{create_db, model::EntityId},
     http::tide::serve_register
 };
-use std::{
-    env, fs,
-    net::{Ipv4Addr, SocketAddrV4},
-    ops::Sub
-};
-// use std::str::FromStr;
-use std::{sync::Arc, time::Duration};
+use std::{env, fs, ops::Sub, os::unix::process::ExitStatusExt, sync::Arc, time::Duration};
 use trojan::config::Config;
-// use trojan::{load_certs, load_keys};
-use acmed::{config::Config as AcmeConfig, errors::Context, sandbox};
-use async_process::Command;
-use async_std::task::{sleep, spawn};
-// use glommio::{channels::shared_channel::SharedSender, net::UdpSocket, timer::sleep, Task};
-use async_std::net::UdpSocket;
-use service::http::handler::serve;
-use std::os::unix::process::ExitStatusExt;
 
 pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<()> {
     let remote_addr = config.remote_addr.clone();
     let remote_port = config.remote_port;
-    // let remote: (&str, u16) = (remote_addr, remote_port);
-
     // init db path
     let db_path = config.mysql.as_ref().unwrap().server_addr.to_owned();
     fs::create_dir_all(&db_path)?;
     let db_path = format!("sqlite:{}/ostrich.db", db_path);
-
     let available_sites = vec!["https://api.ipify.org?format=json", "https://myexternalip.com/json"];
-
     let mut public_ip = String::new();
     for i in 0..available_sites.len() {
         match surf::get(&available_sites[i]).await {
@@ -77,7 +63,6 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
         format!("http://{}:{}{}", remote_addr, remote_port, "/ostrich/api/server/update")
     };
     info!("remote_addr: {}", &remote_addr);
-    // let mut tasks = Vec::new();
 
     create_db(&db_path).await?;
     info!("after create db");
@@ -105,12 +90,8 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
     spawn(async move {
         let addr = NodeAddress { ip: host.clone(), port };
         let total = 50;
-
         loop {
             sleep(Duration::from_secs(2 * 60 + 57)).await;
-
-            // TODO &
-
             let node = Node { addr: addr.clone(), count: 0, total, last_update: chrono::Utc::now().timestamp() };
             info!("reporting node: {:?}", node);
             let body = serde_json::to_vec(&node).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
@@ -121,9 +102,7 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
                     // .timeout(Duration::from_secs(60))
                     .await
             {
-                Ok(_resp) => {
-                    // info!("reporting internal");
-                }
+                Ok(_resp) => {}
                 Err(e) => {
                     error!("{:?}", e);
                 }
@@ -145,11 +124,11 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
     let chall_dir = acmed_config.system.chall_dir.clone();
     spawn(async move {
         // let _= async_std::task::block_on(async{
-            env::set_current_dir(&chall_dir)?;
-            sandbox::init().context("Failed to drop privileges")?;
-            let socket = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), DEFAULT_REGISTER_PORT);
-            serve_register(socket, serve, state).await?;
-            Ok(()) as Result<()>
+        env::set_current_dir(&chall_dir)?;
+        sandbox::init().context("Failed to drop privileges")?;
+        let socket = format!("0.0.0.0:{:?}", DEFAULT_REGISTER_PORT);
+        serve_register(socket.as_str(), state).await?;
+        Ok(()) as Result<()>
         // });
     });
     spawn(async move {
@@ -229,9 +208,12 @@ pub async fn acmed_service(acmed_config: &AcmeConfig, sender: async_channel::Sen
         // let sender = sender.connect().await;
         // Channel has room for 1 element so this will always succeed
         let mut reload = false;
+        let _ = reload;
+        // or
+        // let mut reload;
         loop {
             sleep(Duration::from_secs(604800)).await; // checking every week
-                                                      // sleep(Duration::from_secs(90)).await; // test
+                                                      // sleep(Duration::from_secs(90)).await; // for test
             match acmed::renew::run(&acmed_config.clone()) {
                 Ok(_) => {
                     info!("tls certs has been renewed");

@@ -25,8 +25,16 @@ bytes = {version = "0.5.6"}
 rand = "0.8.3"
 thiserror = "1.0.25"
 uuid = { version = "0.8", features = ["serde", "v4"] }
+
+
 errors = {path = "../errors"}
 acmed = {path = "../acmed" }
+
+[dependencies.serde_with]
+version = "1.9.4"
+features = [ "default" ]
+
+
 [features]
 default= ["sqlite"]
 sqlite = ["sqlx/sqlite","sqlx/time","sqlx/runtime-async-std-rustls","sqlx/any"]
