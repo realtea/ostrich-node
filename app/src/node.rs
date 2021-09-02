@@ -1,12 +1,12 @@
 #![allow(unreachable_code)]
 
-use app::{log_init, DEFAULT_FALLBACK_ADDR, DEFAULT_LOG_PATH, DEFAULT_REGISTER_PORT};
+use app::{log_init, DEFAULT_FALLBACK_ADDR, DEFAULT_LOG_PATH};
 use clap::{App, Arg};
 use errors::{Error, Result};
 // use glommio::{channels::shared_channel, CpuSet, Local, LocalExecutorPoolBuilder, Placement,enclose};
 use app::init::{acmed_service, service_init};
 use async_process::Command;
-use async_std::task::{block_on, sleep, spawn};
+use async_std::task::{block_on, sleep};
 use log::{error, info};
 use std::{fs, path::Path, time::Duration};
 use trojan::{config::set_config, generate_authenticator, ProxyBuilder};

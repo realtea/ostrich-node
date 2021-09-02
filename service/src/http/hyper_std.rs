@@ -1,6 +1,9 @@
 pub mod hyper_compat {
     use futures_lite::{AsyncRead, AsyncWrite, Future};
-    use hyper::service::service_fn;
+    use hyper::{
+        server::Server,
+        service::{make_service_fn, service_fn}
+    };
     use std::{
         net::SocketAddr,
         pin::Pin,
@@ -23,73 +26,42 @@ pub mod hyper_compat {
     };
     use futures_lite::StreamExt;
     use log::error;
+    use std::convert::Infallible;
+
     // use errors::Result;
-    // pub async fn serve_register<A, T, S, F, R>(
-    //     addr: A,
-    //     mut service: S,
-    //     // max_connections: usize,
-    //     state: Arc<State<T>>
-    // ) -> io::Result<()>
-    // where
-    //     S: FnMut(Request<Body>, Arc<State<T>>) -> F + 'static + Copy +Send,
-    //     F: Future<Output = Result<Response<Body>, R>> + Send + 'static,
-    //     R: std::error::Error + 'static + Send + Sync,
-    //     A: Into<SocketAddr>,
-    //     T: Send + Sync + 'static + Db<Conn = PoolConnection<Sqlite>>
-    // {
-    //     let listener = TcpListener::bind(addr.into()).await?;
-    //     // let state = state.clone();
-    //     // let conn_control = Rc::new(Semaphore::new(max_connections as _));
-    //     // loop {
-    //     // let mut incoming = listener.incoming();
-    //     // while let Some(Ok(stream)) = incoming.next().await {
-    //     //     // Err(x) => {
-    //     //     //     return Err(x.into());
-    //     //     // }
-    //     //     // Ok(stream) => {
-    //     //     let addr = stream.local_addr()?;
-    //     //     let state = state.clone();
-    //     //     spawn(async move {
-    //     //         // let _permit = conn_control.acquire_permit(1).await;
-    //     //         if let Err(x) = Http::new()
-    //     //             .with_executor(HyperExecutor)
-    //     //             .serve_connection(HyperStream(stream), service_fn(|req| service(req, state.clone())))
-    //     //             .await
-    //     //         {
-    //     //             error!("Stream from {:?} failed with error {:?}", addr, x);
-    //     //         }
-    //     //     });
-    //
-    //
-    //
-    //         let make_svc = make_service_fn(|_conn| async move{ Ok::<_, Infallible>(service_fn(|req| service(req,
-    // state))) });         let server = Server::builder(HyperListener(listener))
-    //             .executor(HyperExecutor)
-    //             .serve(make_svc);
-    //         server.await;
-    //         // }
-    //     // }
-    //     Ok(())
-    //     // }
-    // }
-
-
     pub async fn serve_register<A, T, S, F, R>(
         addr: A,
-        mut service: S,
+        service: S,
         // max_connections: usize,
         state: Arc<State<T>>
     ) -> io::Result<()>
     where
-        S: FnMut(Request<Body>, Arc<State<T>>) -> F + 'static + Copy + Send,
+        S: FnOnce(Request<Body>, Arc<State<T>>) -> F + 'static + Copy + Send + Sync,
         F: Future<Output = Result<Response<Body>, R>> + Send + 'static,
         R: std::error::Error + 'static + Send + Sync,
         A: Into<SocketAddr>,
         T: Send + Sync + 'static + Db<Conn = PoolConnection<Sqlite>>
     {
         let listener = TcpListener::bind(addr.into()).await?;
-        // let conn_control = Rc::new(Semaphore::new(max_connections as _));
-        // loop {
+        // let make_svc =
+        //     make_service_fn(move |_|
+        // let state = state.clone();
+        //
+        // async  move {
+        //         Ok::<_, Infallible>(service_fn( move|req|
+        //             // let state = state.clone();
+        //
+        //             service(req, state.clone())
+        //         ))
+        //     });
+
+        // let make_svc = make_service_fn(move |_conn| {
+        //     let state = state.clone(); // this moved one line earlier
+        //     async move { Ok::<_, Infallible>(service_fn(move |req| service(req, state.clone()))) }
+        // });
+        //
+        // let server = Server::builder(HyperListener(listener)).executor(HyperExecutor).serve(make_svc);
+        // server.await;
         let mut incoming = listener.incoming();
         while let Some(Ok(stream)) = incoming.next().await {
             // Err(x) => {
@@ -111,9 +83,7 @@ pub mod hyper_compat {
             // }
         }
         Ok(())
-        // }
     }
-
 
     #[derive(Clone)]
     pub struct HyperExecutor;

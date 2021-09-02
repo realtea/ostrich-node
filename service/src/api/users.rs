@@ -8,7 +8,7 @@ use crate::{
 // use bytes::buf::ext::BufExt;
 use crate::http::handler::{ResponseEntity, ServerAddr, ServerNode};
 use errors::{Error, Result, ServiceError};
-use hyper::{body::Buf, Body, Request};
+// use hyper::{body::Buf, Body, Request};
 use log::{error, info};
 use serde::{Deserialize, Serialize};
 use serde_repr::*;
@@ -16,7 +16,7 @@ use sqlx::{pool::PoolConnection, Sqlite};
 use std::{default::Default, ops::Sub, sync::Arc};
 
 pub const USER_TOKEN_MAX_LEN: usize = 1024;
-pub const NODE_EXPIRE: i64 = 210; // 3`30``
+pub const NODE_EXPIRE: i64 = 207; // 3`30``
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct User {
@@ -41,51 +41,6 @@ enum Platform {
     OSX
 }
 
-// enum Nullable<T> {
-// Data(T),
-// Null,
-// Missing,
-// }
-//
-// impl<T> Nullable<T> {
-//
-// fn or(self, optb: Option<T>) -> Option<T> {
-// match self {
-// Nullable::Data(d) => Some(d),
-// Nullable::Null => None,
-// Nullable::Missing => optb,
-// }
-// }
-// }
-//
-// impl<T> From<Option<T>> for Nullable<T> {
-// fn from(opt: Option<T>) -> Self {
-// if let Some(data) = opt {
-// Nullable::Data(data)
-// } else {
-// Nullable::Null
-// }
-// }
-// }
-//
-// impl<'de, T> Deserialize<'de> for Nullable<T>
-// where
-// T: Deserialize<'de>,
-// {
-// fn deserialize<D>(deserializer: D) -> Result<Self>
-// where
-// D: Deserializer<'de>,
-// {
-// Option::deserialize(deserializer).map(Nullable::from)
-// }
-// }
-//
-// impl<T> Default for Nullable<T> {
-// fn default() -> Self {
-// Nullable::Missing
-// }
-// }
-
 #[derive(Serialize)]
 struct UserResponseBody {
     user: User
@@ -104,11 +59,11 @@ impl From<UserEntity> for User {
         User { token, role }
     }
 }
-pub async fn update_available_server<T>(req: Request<Body>, state: Arc<State<T>>) -> Result<ResponseEntity>
+pub async fn update_available_server<T>(mut req:  tide::Request<Arc<State<T>>>) -> Result<ResponseEntity>
 where T: Db<Conn = PoolConnection<Sqlite>> {
-    let body = hyper::body::aggregate(req).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?; // TODO
-                                                                                                       // Decode as JSON...
-    let body: Node = serde_json::from_reader(body.reader()).map_err(|_| ServiceError::InvalidParams)?;
+    // let body = hyper::body::aggregate(req).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?; // TODO
+    let state = req.state();                                                           // Decode as JSON...
+    let body: Node = req.body_json().await.map_err(|_| ServiceError::InvalidParams)?;
     info!("received node: {:?}", body);
     let addr = body.addr;
     let now = chrono::Utc::now().timestamp();
@@ -132,8 +87,69 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
     Ok(ResponseEntity::Status)
 }
 
-pub async fn get_available_server<T>(req: Request<Body>, state: Arc<State<T>>) -> Result<ResponseEntity>
+pub async fn get_available_server<T>(mut req:  tide::Request<Arc<State<T>>>) -> Result<ResponseEntity>
 where T: Db<Conn = PoolConnection<Sqlite>> {
+    let state = req.state();
+    let mut db = state.db.conn().await?;
+    #[derive(Serialize_repr, Deserialize_repr)]
+    #[repr(u8)]
+    enum Role {
+        User,
+        Manager,
+        SuperVisor
+    }
+    #[derive(Deserialize, Debug)]
+    struct RequestBody {
+        user_id: String,
+        platform: Platform
+    }
+
+    let mut nodes = state.server.lock().await;
+    let now = chrono::Utc::now().timestamp();
+    let len = nodes.len();
+
+    if len == 0 {
+        return Err(Error::from(ServiceError::InvalidParams))
+    }
+    // let mut delete = Vec::new();
+    for _i in 0..len {
+        let node = nodes.pop_front();
+        if node.is_none() {
+            drop(nodes);
+            return Err(Error::from(ServiceError::InvalidParams))
+        }
+        let node = node.unwrap();
+        if now.sub(node.last_update) < NODE_EXPIRE {
+            // Aggregate the body...
+            // let whole_body = hyper::body::aggregate(req).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?; // TODO
+                                                                                                                     // Decode as JSON...
+            let body: RequestBody =
+                req.body_json().await.map_err(|_| ServiceError::InvalidParams)?;
+            // Change the JSON...
+            info!("body {:?}", body);
+
+            // let body: RequestBody = serde_json::from_slice(j)?;
+            db.get_user_by_token(body.user_id.as_ref()).await.map_err(|e| {
+                info!("sql error: {:?}", e);
+                ServiceError::IllegalToken
+            })?;
+
+            let servers = ResponseEntity::Server(ServerNode {
+                server: vec![ServerAddr { ip: node.addr.ip.clone(), port: node.addr.port }]
+            });
+            nodes.push_back(node);
+            drop(nodes);
+            return Ok(servers)
+        }
+    }
+    drop(nodes);
+    Err(Error::from(ServiceError::InvalidParams))
+}
+
+pub async fn get_available_servers<T>(mut req:  tide::Request<Arc<State<T>>>) -> Result<ResponseEntity>
+    where T: Db<Conn = PoolConnection<Sqlite>> {
+    let state = req.state();
+
     let mut db = state.db.conn().await?;
     #[derive(Serialize_repr, Deserialize_repr)]
     #[repr(u8)]
@@ -164,10 +180,10 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
         let node = node.unwrap();
         if now.sub(node.last_update) < NODE_EXPIRE {
             // Aggregate the body...
-            let whole_body = hyper::body::aggregate(req).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?; // TODO
-                                                                                                                     // Decode as JSON...
+            // let whole_body = hyper::body::aggregate(req).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?; // TODO
+            // Decode as JSON...
             let body: RequestBody =
-                serde_json::from_reader(whole_body.reader()).map_err(|_| ServiceError::InvalidParams)?;
+                req.body_json().await.map_err(|_| ServiceError::InvalidParams)?;
             // Change the JSON...
             info!("body {:?}", body);
 
@@ -178,7 +194,7 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
             })?;
 
             let servers = ResponseEntity::Server(ServerNode {
-                server: vec![ServerAddr { ip: node.addr.ip.clone(), port: node.addr.port }]
+                server: vec![ServerAddr { ip: node.addr.ip.clone(), port: node.addr.port },ServerAddr { ip: "walkonbits.site".to_string(), port: 90}]
             });
             nodes.push_back(node);
             drop(nodes);
@@ -188,9 +204,9 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
     drop(nodes);
     Err(Error::from(ServiceError::InvalidParams))
 }
-
-pub async fn create_user<T>(req: Request<Body>, state: Arc<State<T>>) -> Result<ResponseEntity>
+pub async fn create_user<T>(mut req:  tide::Request<Arc<State<T>>>) -> Result<ResponseEntity>
 where T: Db<Conn = PoolConnection<Sqlite>> {
+    let state = req.state();
     let mut db = state.db.conn().await?;
 
     #[derive(Deserialize)]
@@ -206,9 +222,9 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
         user: NewUser
     }
     // Aggregate the body...
-    let whole_body = hyper::body::aggregate(req).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?; // TODO
+    // let whole_body = hyper::body::aggregate(req).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?; // TODO
                                                                                                              // Decode as JSON...
-    let body: RequestBody = serde_json::from_reader(whole_body.reader()).map_err(|_| ServiceError::InvalidParams)?;
+    let body: RequestBody = req.body_json().await.map_err(|_| ServiceError::InvalidParams)?;
 
     let creator = db.get_user_by_token(body.admin.as_ref()).await.map_err(|e| {
         error!("get admin error: {:?}", e);

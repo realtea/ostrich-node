@@ -1,7 +1,5 @@
 #![warn(unused_must_use)]
-use crate::{
-    build_cmd_response, create_cmd_user, log_init, DEFAULT_COMMAND_ADDR, DEFAULT_LOG_PATH, DEFAULT_REGISTER_PORT
-};
+use crate::{build_cmd_response, create_cmd_user, DEFAULT_COMMAND_ADDR, DEFAULT_REGISTER_PORT};
 
 // use async_tls::TlsAcceptor;
 use bytes::BytesMut;
@@ -17,13 +15,12 @@ use service::{
     },
     db,
     db::{create_db, model::EntityId},
-    http::hyper::hyper_compat::serve_register
+    http::tide::serve_register
 };
 use std::{
     env, fs,
     net::{Ipv4Addr, SocketAddrV4},
-    ops::Sub,
-    path::Path
+    ops::Sub
 };
 // use std::str::FromStr;
 use std::{sync::Arc, time::Duration};
@@ -38,12 +35,6 @@ use service::http::handler::serve;
 use std::os::unix::process::ExitStatusExt;
 
 pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<()> {
-    // init log
-    // let exe_path = std::env::current_exe()?;
-    // let exe_path = std::env::current_dir()?;
-    // let log_path = exe_path.join(DEFAULT_LOG_PATH);
-
-
     let remote_addr = config.remote_addr.clone();
     let remote_port = config.remote_port;
     // let remote: (&str, u16) = (remote_addr, remote_port);
@@ -112,13 +103,15 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
     let host = config.local_addr.to_owned();
     let port = config.local_port;
     spawn(async move {
+        let addr = NodeAddress { ip: host.clone(), port };
+        let total = 50;
+
         loop {
-            sleep(Duration::from_secs(3 * 60)).await;
+            sleep(Duration::from_secs(2 * 60 + 57)).await;
 
             // TODO &
-            let addr = NodeAddress { ip: host.clone(), port };
-            let total = 50;
-            let node = Node { addr, count: 0, total, last_update: chrono::Utc::now().timestamp() };
+
+            let node = Node { addr: addr.clone(), count: 0, total, last_update: chrono::Utc::now().timestamp() };
             info!("reporting node: {:?}", node);
             let body = serde_json::to_vec(&node).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
             // Create a request.
@@ -149,22 +142,19 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
     let state = Arc::new(State::new(register_db));
     let cleanup_state = state.clone();
 
-    // let acmed_config = acmed::config::load().map_err(|e| {
-    //     error!("loading acme config: {:?}", e);
-    //     e
-    // })?;
-    // let register_task =
     let chall_dir = acmed_config.system.chall_dir.clone();
     spawn(async move {
-        env::set_current_dir(&chall_dir)?;
-        sandbox::init().context("Failed to drop privileges")?;
-        let socket = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), DEFAULT_REGISTER_PORT);
-        serve_register(socket, serve, state).await?;
-        Ok(()) as Result<()>
+        // let _= async_std::task::block_on(async{
+            env::set_current_dir(&chall_dir)?;
+            sandbox::init().context("Failed to drop privileges")?;
+            let socket = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), DEFAULT_REGISTER_PORT);
+            serve_register(socket, serve, state).await?;
+            Ok(()) as Result<()>
+        // });
     });
     spawn(async move {
         loop {
-            sleep(Duration::from_secs(5 * 60)).await;
+            sleep(Duration::from_secs(5 * 60 + 11)).await;
             let mut nodes = cleanup_state.server.lock().await;
             let now = chrono::Utc::now().timestamp();
             let len = nodes.len();
@@ -187,14 +177,16 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
 
     spawn(async move {
         let socket = UdpSocket::bind(DEFAULT_COMMAND_ADDR).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
-        let mut buf = vec![0u8; 1024];
+        info!("Listening on {}", socket.local_addr()?); // TODO
 
-        info!("Listening on {}", socket.local_addr().unwrap()); // TODO
+        let mut buf = vec![0u8; 1024];
+        let mut data = BytesMut::new();
 
         loop {
+            data.clear();
+            buf.clear();
             let (n, peer) = socket.recv_from(&mut buf).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
 
-            let mut data = BytesMut::new();
             data.extend_from_slice(&buf[..n]);
 
             match Frame::get_frame_type(&data.as_ref()) {
@@ -238,17 +230,8 @@ pub async fn acmed_service(acmed_config: &AcmeConfig, sender: async_channel::Sen
         // Channel has room for 1 element so this will always succeed
         let mut reload = false;
         loop {
-            // sleep(Duration::from_secs(604800)).await; // checking every week
-            // if acmed::renew::run(&acmed_config.clone()).is_ok(){
-            //     sender.try_send(true).map_err(|e|{
-            //         error!("send restart signal error: {:?}",e);
-            //         Error::Eor(anyhow::anyhow!("{:?}",e))
-            //
-            //     })?;
-            // }
-
             sleep(Duration::from_secs(604800)).await; // checking every week
-            // sleep(Duration::from_secs(90)).await; // test
+                                                      // sleep(Duration::from_secs(90)).await; // test
             match acmed::renew::run(&acmed_config.clone()) {
                 Ok(_) => {
                     info!("tls certs has been renewed");
@@ -269,12 +252,6 @@ pub async fn acmed_service(acmed_config: &AcmeConfig, sender: async_channel::Sen
                 }
             }
             if reload {
-                // let p = Command::new("killall").arg("-e").arg("ostrich_node").status().await?;
-                // if p.signal().is_some() {
-                //     error!("failed to killall ostrich node process");
-                // }
-                // info!("ostrich node process has been killed");
-                // sleep(Duration::from_secs(10)).await; // test
                 let p = Command::new("nginx").arg("-s").arg("reload").status().await?;
                 if p.signal().is_some() {
                     error!("failed to reload nginx service");

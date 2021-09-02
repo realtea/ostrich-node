@@ -30,7 +30,6 @@ impl PartialEq for Node {
         self.addr.ip == other.addr.ip
     }
 }
-
 pub struct State<T> {
     pub(crate) db: T,
     pub server: Mutex<VecDeque<Node>> /* pub sq: RwLock<BTreeMap<String, usize>>,

@@ -155,13 +155,13 @@ pub fn log_init<P: AsRef<Path>>(level: u8, log_path: P) -> Result<()> {
     //     .init();
 
     use log4rs::{
-        append::rolling_file::{ RollingFileAppender},
-        config::{Appender, Config,  Root},
+        append::rolling_file::RollingFileAppender,
+        config::{Appender, Config, Root},
         encode::pattern::PatternEncoder
     };
     const K: u64 = 1024;
     const M: u64 = K * K;
-    const FILE_SIZE: u64 = 5 * M;//as max log file size to roll
+    const FILE_SIZE: u64 = 5 * M; // as max log file size to roll
     const FILE_COUNT: u32 = 7;
 
     // let window_size = 3; // log0, log1, log2
