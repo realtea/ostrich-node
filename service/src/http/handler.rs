@@ -24,7 +24,8 @@ pub struct ServerAddr {
     pub(crate) ip: String,
     pub(crate) port: u16,
     pub country: Option<String>,
-    pub city: Option<String>
+    pub city: Option<String>,
+    pub passwd: Option<String>
 }
 
 #[derive(Serialize, Deserialize)]

@@ -117,7 +117,7 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
             })?;
 
             let servers = ResponseEntity::Server(ServerNode {
-                server: vec![ServerAddr { ip: node.addr.ip.clone(), port: node.addr.port, country: None, city: None }]
+                server: vec![ServerAddr { ip: node.addr.ip.clone(), port: node.addr.port, country: None, city: None, passwd: None }]
             });
             nodes.push_back(node);
             drop(nodes);
@@ -158,8 +158,8 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
 
             let servers = ResponseEntity::Server(ServerNode {
                 server: vec![
-                    ServerAddr { ip: node.addr.ip.clone(), port: node.addr.port, country: None, city: None },
-                    ServerAddr { ip: "walkonbits.site".to_string(), port: 90, country: None, city: None },
+                    ServerAddr { ip: node.addr.ip.clone(), port: node.addr.port, country: Some("United States".to_string()), city: Some("Texas City".to_string()), passwd: Some("251f6edc".to_string()) },
+                    ServerAddr { ip: "walkonbits.live".to_string(), port: 90, country: Some("Japan".to_string()), city: Some("Tokyo".to_string()), passwd: Some("251f6edc".to_string()) },
                 ]
             });
             nodes.push_back(node);
