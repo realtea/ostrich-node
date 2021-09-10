@@ -2,7 +2,8 @@
 use crate::{load_certs, load_keys, Address};
 use async_std::{
     net::{TcpListener, TcpStream, UdpSocket},
-    task::spawn
+    task::spawn,
+    future::timeout
 };
 use async_tls::{server::TlsStream, TlsAcceptor};
 use bytes::BufMut;
@@ -209,6 +210,8 @@ impl UdpAssociateHeader {
 }
 const CMD_TCP_CONNECT: u8 = 0x01;
 const CMD_UDP_ASSOCIATE: u8 = 0x03;
+const READ_TIMEOUT_WHEN_ONE_SHUTDOWN: std::time::Duration = std::time::Duration::from_secs(5);
+
 async fn redirect_fallback(source: &str, target: &str, tls_stream: TlsStream<TcpStream>, buf: &[u8]) -> Result<()> {
     let mut tcp_stream = TcpStream::connect(target).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
 
@@ -224,26 +227,30 @@ async fn redirect_fallback(source: &str, target: &str, tls_stream: TlsStream<Tcp
         match copy(&mut from_tls_stream, &mut target_sink).await {
             Ok(len) => {
                 debug!("total {} bytes copied from source to target: {}", len, s_t);
+                Ok(())
+
             }
             Err(err) => {
                 error!("{} error copying: {}", s_t, err);
+                target_sink.close().await?;
+                Err(err)
             }
         }
-        target_sink.close().await?;
-        Ok::<(), Error>(())
     };
 
     let target_to_source_ft = async move {
         match copy(&mut target_stream, &mut from_tls_sink).await {
             Ok(len) => {
                 debug!("total {} bytes copied from target: {}", len, t_s);
+                Ok(())
+
             }
             Err(err) => {
                 error!("{} error copying: {}", t_s, err);
+                from_tls_sink.close().await?;
+                Err(err)
             }
         }
-        from_tls_sink.close().await?;
-        Ok::<(), Error>(())
     };
     futures::pin_mut!(source_to_target_ft);
     futures::pin_mut!(target_to_source_ft);
@@ -261,11 +268,19 @@ async fn redirect_fallback(source: &str, target: &str, tls_stream: TlsStream<Tcp
             std::mem::drop(fut_left);
             Err(anyhow::anyhow!("tcp proxy copy remote to local error: {:?}", e))?
         }
-        Either::Left((Ok(_), fut_right)) => {
-            std::mem::drop(fut_right);
-        }
-        Either::Right((Ok(_), fut_left)) => {
-            std::mem::drop(fut_left);
+        Either::Left((Ok(_), right_fut)) => {
+            timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
+                right_fut.await;
+                Ok(()) as Result<()>
+            })
+                .await
+        },
+        Either::Right((Ok(_), left_fut)) => {
+            timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
+                left_fut.await;
+                Ok(()) as Result<()>
+            })
+                .await
         }
     };
     Ok(())
@@ -325,7 +340,7 @@ async fn proxy(
                     }
                 }
                 target_sink.close().await?;
-                Ok::<(), Error>(())
+                Ok(()) as Result<()>
             };
 
             let target_to_source_ft = async {
@@ -338,7 +353,7 @@ async fn proxy(
                     }
                 }
                 from_tls_sink.close().await?;
-                Ok::<(), Error>(())
+                Ok(()) as Result<()>
             };
             futures::pin_mut!(source_to_target_ft);
             futures::pin_mut!(target_to_source_ft);
@@ -356,11 +371,19 @@ async fn proxy(
                     std::mem::drop(fut_left);
                     Err(anyhow::anyhow!("tcp proxy copy remote to local error: {:?}", e))?
                 }
-                Either::Left((Ok(_), fut_right)) => {
-                    std::mem::drop(fut_right);
-                }
-                Either::Right((Ok(_), fut_left)) => {
-                    std::mem::drop(fut_left);
+                Either::Left((Ok(_), right_fut)) => {
+                    timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
+                        right_fut.await;
+                        Ok(()) as Result<()>
+                    })
+                        .await
+                },
+                Either::Right((Ok(_), left_fut)) => {
+                    timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
+                        left_fut.await;
+                        Ok(()) as Result<()>
+                    })
+                        .await
                 }
             };
             // Ok(RequestHeader::TcpConnect(hash_buf, addr))
@@ -385,7 +408,20 @@ async fn proxy(
                         break
                     }
 
-                    tls_stream_reader.read_exact(&mut buf[..header.payload_len as usize]).await?;
+                    // tls_stream_reader.read_exact(&mut buf[..header.payload_len as usize]).await?;
+
+                    match timeout(std::time::Duration::from_secs(60), async {
+                        tls_stream_reader.read_exact(&mut buf[..header.payload_len as usize]).await?;
+                        Ok(()) as Result<()>
+                    })
+                        .await
+                    {
+                        Ok(_) => {}
+                        Err(e) => {
+                            error!("reading client socket timeout:{:?}", e);
+                            break
+                        }
+                    }
 
                     match outbound.send_to(&buf[..header.payload_len as usize], header.addr.to_string()).await {
                         Ok(n) => {
@@ -407,16 +443,31 @@ async fn proxy(
             let server_to_client = Box::pin(async {
                 let mut buf = [0u8; RELAY_BUFFER_SIZE];
                 loop {
-                    // error!("server_to_client never end");
-                    let (len, dst) =
-                        outbound.recv_from(&mut buf).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
-                    if len == 0 {
-                        break
+                    match timeout(std::time::Duration::from_secs(60), async {
+                        let (len, dst) =
+                            outbound.recv_from(&mut buf).await?;
+                        // if len == 0 {
+                        //     break
+                        // }
+                        Ok((len,dst)) as Result<(usize,SocketAddr)>
+                        // (len,dst)
+                    })
+                        .await?
+                    {
+                        Ok((len,dst)) => {
+                            if len == 0 {
+                                break
+                            }
+                            let header = UdpAssociateHeader::new(&Address::from(dst), len);
+                            header.write_to(&mut tls_stream_writer).await?;
+                            tls_stream_writer.write_all(&buf[..len]).await?;
+                            debug!("udp copy to client: {} bytes", len);
+                        }
+                        Err(e) => {
+                            error!("reading client socket timeout:{:?}", e);
+                            break
+                        }
                     }
-                    let header = UdpAssociateHeader::new(&Address::from(dst), len);
-                    header.write_to(&mut tls_stream_writer).await?;
-                    tls_stream_writer.write_all(&buf[..len]).await?;
-                    debug!("udp copy to client: {} bytes", len);
                 }
                 tls_stream_writer.flush().await?;
                 tls_stream_writer.close().await?;
@@ -436,11 +487,19 @@ async fn proxy(
                     std::mem::drop(fut_left);
                     Err(anyhow::anyhow!("UdpAssociate copy remote to local error: {:?}", e))?
                 }
-                Either::Left((Ok(_), fut_right)) => {
-                    std::mem::drop(fut_right);
-                }
-                Either::Right((Ok(_), fut_left)) => {
-                    std::mem::drop(fut_left);
+                Either::Left((Ok(_), right_fut)) => {
+                    timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
+                        right_fut.await;
+                        Ok(()) as Result<()>
+                    })
+                        .await
+                },
+                Either::Right((Ok(_), left_fut)) => {
+                    timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
+                        left_fut.await;
+                        Ok(()) as Result<()>
+                    })
+                        .await
                 }
             };
 
