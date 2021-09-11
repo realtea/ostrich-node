@@ -10,8 +10,17 @@ use async_std::task::{block_on, sleep};
 use log::{error, info};
 use std::{fs, path::Path, time::Duration};
 use trojan::{config::set_config, generate_authenticator, ProxyBuilder};
-// use warp::Filter;
-// use warp_reverse_proxy::reverse_proxy_filter;
+
+// use mimalloc::MiMalloc;
+//
+// #[global_allocator]
+// static GLOBAL: MiMalloc = MiMalloc;
+#[cfg(not(target_env = "msvc"))]
+use tikv_jemallocator::Jemalloc;
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
 
 fn main() -> Result<()> {
     let matches = App::new("ostrich")

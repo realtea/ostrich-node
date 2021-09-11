@@ -17,7 +17,7 @@ use std::{
     net::{Ipv6Addr, SocketAddr, SocketAddrV6},
     sync::Arc
 };
-
+use heapless::Vec as StackVec;
 use futures_lite::io::copy;
 use rustls::{NoClientAuth, ServerConfig};
 // use futures_lite::AsyncWriteExt;
@@ -260,7 +260,12 @@ async fn redirect_fallback(source: &str, target: &str, tls_stream: TlsStream<Tcp
     match res {
         Either::Left((Err(e), fut_right)) => {
             debug!("udp copy to remote closed");
-            std::mem::drop(fut_right);
+            // std::mem::drop(fut_right);
+            let _ = timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
+                fut_right.await;
+                Ok(()) as Result<()>
+            })
+                .await;
             Err(anyhow::anyhow!("tcp proxy copy local to remote error: {:?}", e))?
         }
         Either::Right((Err(e), fut_left)) => {
@@ -291,7 +296,9 @@ async fn redirect_fallback(source: &str, target: &str, tls_stream: TlsStream<Tcp
 async fn proxy(
     mut tls_stream: TlsStream<TcpStream>, source: String, authenticator: Vec<String>, fallback: String
 ) -> Result<()> {
-    let mut passwd_buf = [0u8; HASH_STR_LEN];
+    let mut passwd_buf: StackVec<u8, HASH_STR_LEN> = StackVec::new();
+    passwd_buf.resize(HASH_STR_LEN, 0);
+
     let len = tls_stream.read(&mut passwd_buf).await?;
     if len != HASH_STR_LEN {
         // first_packet.extend_from_slice(&hash_buf[..len]);
@@ -308,8 +315,14 @@ async fn proxy(
     } else {
         debug!("authentication succeeded");
     }
-    let mut crlf_buf = [0u8; 2];
-    let mut cmd_buf = [0u8; 1];
+    // let mut crlf_buf = [0u8; 2];
+    // let mut cmd_buf = [0u8; 1];
+
+    let mut crlf_buf: StackVec<u8, 2> = StackVec::new();
+    crlf_buf.resize(2, 0);
+
+    let mut cmd_buf: StackVec<u8, 1> = StackVec::new();
+    cmd_buf.resize(1, 0);
 
     tls_stream.read_exact(&mut crlf_buf).await?;
     tls_stream.read_exact(&mut cmd_buf).await?;
@@ -363,12 +376,22 @@ async fn proxy(
             match res {
                 Either::Left((Err(e), fut_right)) => {
                     debug!("udp copy to remote closed");
-                    std::mem::drop(fut_right);
+                    // std::mem::drop(fut_right);
+                    let _ = timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
+                        fut_right.await;
+                        Ok(()) as Result<()>
+                    })
+                        .await;
                     Err(anyhow::anyhow!("tcp proxy copy local to remote error: {:?}", e))?
                 }
                 Either::Right((Err(e), fut_left)) => {
                     debug!("udp copy to local closed");
                     std::mem::drop(fut_left);
+                    // timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
+                    //     fut_left.await;
+                    //     Ok(()) as Result<()>
+                    // })
+                    //     .await;
                     Err(anyhow::anyhow!("tcp proxy copy remote to local error: {:?}", e))?
                 }
                 Either::Left((Ok(_), right_fut)) => {
@@ -399,8 +422,11 @@ async fn proxy(
                 .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
             let (mut tls_stream_reader, mut tls_stream_writer) = tls_stream.split();
 
-            let client_to_server = Box::pin(async {
-                let mut buf = [0u8; RELAY_BUFFER_SIZE];
+            let client_to_server = async {
+                // let mut buf = [0u8; RELAY_BUFFER_SIZE];
+                let mut buf: StackVec<u8, RELAY_BUFFER_SIZE> = StackVec::new();
+                buf.resize(RELAY_BUFFER_SIZE, 0);
+
                 loop {
                     // error!("client_to_server never end");
                     let header = UdpAssociateHeader::read_from(&mut tls_stream_reader).await?;
@@ -438,10 +464,12 @@ async fn proxy(
                 }
                 std::mem::drop(buf);
                 Ok(()) as Result<()>
-            })
-            .fuse();
-            let server_to_client = Box::pin(async {
-                let mut buf = [0u8; RELAY_BUFFER_SIZE];
+            };
+            let server_to_client = async {
+                // let mut buf = [0u8; RELAY_BUFFER_SIZE];
+                let mut buf: StackVec<u8, RELAY_BUFFER_SIZE> = StackVec::new();
+                buf.resize(RELAY_BUFFER_SIZE, 0);
+
                 loop {
                     match timeout(std::time::Duration::from_secs(60), async {
                         let (len, dst) =
@@ -473,30 +501,43 @@ async fn proxy(
                 tls_stream_writer.close().await?;
                 std::mem::drop(buf);
                 Ok(()) as Result<()>
-            })
-            .fuse();
+            };
+
+            futures::pin_mut!(client_to_server);
+            futures::pin_mut!(server_to_client);
+
             let res = futures::future::select(client_to_server, server_to_client).await;
             match res {
                 Either::Left((Err(e), fut_right)) => {
                     debug!("udp copy to remote closed");
-                    std::mem::drop(fut_right);
+                    // std::mem::drop(fut_right);
+                    timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
+                        fut_right.await;
+                        Ok(()) as Result<()>
+                    })
+                        .await;
                     Err(anyhow::anyhow!("UdpAssociate copy local to remote error: {:?}", e))?
                 }
                 Either::Right((Err(e), fut_left)) => {
                     debug!("udp copy to local closed");
-                    std::mem::drop(fut_left);
+                    // std::mem::drop(fut_left);
+                    timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
+                        fut_left.await;
+                        Ok(()) as Result<()>
+                    })
+                        .await;
                     Err(anyhow::anyhow!("UdpAssociate copy remote to local error: {:?}", e))?
                 }
-                Either::Left((Ok(_), right_fut)) => {
+                Either::Left((Ok(_), fut_right)) => {
                     timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
-                        right_fut.await;
+                        fut_right.await;
                         Ok(()) as Result<()>
                     })
                         .await
                 },
-                Either::Right((Ok(_), left_fut)) => {
+                Either::Right((Ok(_), fut_left)) => {
                     timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
-                        left_fut.await;
+                        fut_left.await;
                         Ok(()) as Result<()>
                     })
                         .await
