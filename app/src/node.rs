@@ -15,12 +15,12 @@ use trojan::{config::set_config, generate_authenticator, ProxyBuilder};
 //
 // #[global_allocator]
 // static GLOBAL: MiMalloc = MiMalloc;
-#[cfg(not(target_env = "msvc"))]
-use tikv_jemallocator::Jemalloc;
-
-#[cfg(not(target_env = "msvc"))]
-#[global_allocator]
-static GLOBAL: Jemalloc = Jemalloc;
+// #[cfg(not(target_env = "msvc"))]
+// use tikv_jemallocator::Jemalloc;
+//
+// #[cfg(not(target_env = "msvc"))]
+// #[global_allocator]
+// static GLOBAL: Jemalloc = Jemalloc;
 
 fn main() -> Result<()> {
     let matches = App::new("ostrich")

@@ -1,25 +1,34 @@
 #![allow(unreachable_code)]
-use crate::{load_certs, load_keys, Address};
+use crate::{copy_future, load_certs, load_keys, Address};
 use async_std::{
+    future::timeout,
     net::{TcpListener, TcpStream, UdpSocket},
-    task::spawn,
-    future::timeout
+    task::spawn
 };
 use async_tls::{server::TlsStream, TlsAcceptor};
 use bytes::BufMut;
 use errors::{Error, Result};
+use futures_lite::io::copy;
 use futures_util::{
     future::Either, io::AsyncReadExt, stream::StreamExt, AsyncRead, AsyncWrite, AsyncWriteExt, FutureExt
 };
+use heapless::Vec as StackVec;
 use log::{debug, error, info};
+use rustls::{NoClientAuth, ServerConfig};
 use std::{
     io,
     net::{Ipv6Addr, SocketAddr, SocketAddrV6},
-    sync::Arc
+    sync::Arc,
+    time::Duration
 };
-use heapless::Vec as StackVec;
-use futures_lite::io::copy;
-use rustls::{NoClientAuth, ServerConfig};
+
+cfg_if::cfg_if! {
+    if #[cfg(wss)] {
+        use ws_stream_tungstenite::WsStream as AsyncWsStream;
+        use crate::ws::WsStream,
+
+    }
+}
 // use futures_lite::AsyncWriteExt;
 // use glommio::{
 //     channels::shared_channel::{SharedReceiver, SharedSender},
@@ -131,6 +140,11 @@ async fn process_stream(acceptor: TlsAcceptor, raw_stream: TcpStream, authentica
 
     match handshake {
         Ok(inner_stream) => {
+            #[cfg(feature = "wss")]
+            let inner_stream = WsStream::<TlsStream<TcpStream>>(AsyncWsStream::new(
+                async_tungstenite::accept_async(inner_stream).await.expect("cannot accept websockets connection")
+            ));
+
             debug!("handshake success from: {}", source);
             if let Err(err) = proxy(inner_stream, source.clone(), authenticator, fallback).await {
                 error!("error processing tls: {:?} from source: {}", err, source);
@@ -212,7 +226,10 @@ const CMD_TCP_CONNECT: u8 = 0x01;
 const CMD_UDP_ASSOCIATE: u8 = 0x03;
 const READ_TIMEOUT_WHEN_ONE_SHUTDOWN: std::time::Duration = std::time::Duration::from_secs(5);
 
-async fn redirect_fallback(source: &str, target: &str, tls_stream: TlsStream<TcpStream>, buf: &[u8]) -> Result<()> {
+async fn redirect_fallback<#[cfg(feature = "wss")] S: AsyncRead + AsyncWrite + Unpin + Send>(
+    source: &str, target: &str, #[cfg(not(feature = "wss"))] mut tls_stream: TlsStream<TcpStream>,
+    #[cfg(feature = "wss")] mut tls_stream: WsStream<S>, buf: &[u8]
+) -> Result<()> {
     let mut tcp_stream = TcpStream::connect(target).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
 
     debug!("connect to fallback: {}", target);
@@ -228,7 +245,6 @@ async fn redirect_fallback(source: &str, target: &str, tls_stream: TlsStream<Tcp
             Ok(len) => {
                 debug!("total {} bytes copied from source to target: {}", len, s_t);
                 Ok(())
-
             }
             Err(err) => {
                 error!("{} error copying: {}", s_t, err);
@@ -243,7 +259,6 @@ async fn redirect_fallback(source: &str, target: &str, tls_stream: TlsStream<Tcp
             Ok(len) => {
                 debug!("total {} bytes copied from target: {}", len, t_s);
                 Ok(())
-
             }
             Err(err) => {
                 error!("{} error copying: {}", t_s, err);
@@ -261,11 +276,11 @@ async fn redirect_fallback(source: &str, target: &str, tls_stream: TlsStream<Tcp
         Either::Left((Err(e), fut_right)) => {
             debug!("udp copy to remote closed");
             // std::mem::drop(fut_right);
-            let _ = timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
+            let _ = timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
                 fut_right.await;
                 Ok(()) as Result<()>
             })
-                .await;
+            .await;
             Err(anyhow::anyhow!("tcp proxy copy local to remote error: {:?}", e))?
         }
         Either::Right((Err(e), fut_left)) => {
@@ -274,18 +289,18 @@ async fn redirect_fallback(source: &str, target: &str, tls_stream: TlsStream<Tcp
             Err(anyhow::anyhow!("tcp proxy copy remote to local error: {:?}", e))?
         }
         Either::Left((Ok(_), right_fut)) => {
-            timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
+            timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
                 right_fut.await;
                 Ok(()) as Result<()>
             })
-                .await
-        },
+            .await
+        }
         Either::Right((Ok(_), left_fut)) => {
-            timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
+            timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
                 left_fut.await;
                 Ok(()) as Result<()>
             })
-                .await
+            .await
         }
     };
     Ok(())
@@ -293,8 +308,9 @@ async fn redirect_fallback(source: &str, target: &str, tls_stream: TlsStream<Tcp
 // async fn proxy(
 //     mut tls_stream: TlsStream<TcpStream>, source: String, authenticator: Arc<Vec<String>>, fallback: String
 // )
-async fn proxy(
-    mut tls_stream: TlsStream<TcpStream>, source: String, authenticator: Vec<String>, fallback: String
+async fn proxy<#[cfg(feature = "wss")] S: AsyncRead + AsyncWrite + Unpin + Send>(
+    #[cfg(not(feature = "wss"))] mut tls_stream: TlsStream<TcpStream>,
+    #[cfg(feature = "wss")] mut tls_stream: WsStream<S>, source: String, authenticator: Vec<String>, fallback: String
 ) -> Result<()> {
     let mut passwd_buf: StackVec<u8, HASH_STR_LEN> = StackVec::new();
     passwd_buf.resize(HASH_STR_LEN, 0);
@@ -333,82 +349,98 @@ async fn proxy(
         CMD_TCP_CONNECT => {
             debug!("TcpConnect target addr: {:?}", addr);
 
-            let tcp_stream =
+            let mut tcp_stream =
                 TcpStream::connect(addr.to_string()).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+
+            // let mut target_stream = tcp_stream.clone();
+            // let mut target_sink = tcp_stream.clone();
 
             debug!("connect to target: {} from source: {}", addr, source);
 
-            let (mut target_stream, mut target_sink) = tcp_stream.split();
-            let (mut from_tls_stream, mut from_tls_sink) = tls_stream.split();
+            // use crate::deplex::Duplex;
+            // let duplex = Duplex::new(tls_stream,tcp_stream);
+            // duplex.await?;
 
-            let s_t = format!("{}->{}", source, addr.to_string());
-            let t_s = format!("{}->{}", addr.to_string(), source);
-            let source_to_target_ft = async {
-                match copy(&mut from_tls_stream, &mut target_sink).await {
-                    Ok(len) => {
-                        debug!("total {} bytes copied from source to target: {}", len, s_t);
-                    }
-                    Err(err) => {
-                        error!("{} error copying: {}", s_t, err);
-                    }
-                }
-                target_sink.close().await?;
-                Ok(()) as Result<()>
-            };
+            // let (mut target_stream, mut target_sink) = tcp_stream.split();
+            // let tls_inner = tls_stream.io.clone();
+            // let (mut from_tls_stream, mut from_tls_sink) = tls_stream.split();
 
-            let target_to_source_ft = async {
-                match copy(&mut target_stream, &mut from_tls_sink).await {
-                    Ok(len) => {
-                        debug!("total {} bytes copied from target: {}", len, t_s);
-                    }
-                    Err(err) => {
-                        error!("{} error copying: {}", t_s, err);
-                    }
-                }
-                from_tls_sink.close().await?;
-                Ok(()) as Result<()>
-            };
-            futures::pin_mut!(source_to_target_ft);
-            futures::pin_mut!(target_to_source_ft);
-            // spawn(source_to_target_ft);
-            // spawn(target_to_source_ft);
-            let res = futures::future::select(source_to_target_ft, target_to_source_ft).await;
-            match res {
-                Either::Left((Err(e), fut_right)) => {
-                    debug!("udp copy to remote closed");
-                    // std::mem::drop(fut_right);
-                    let _ = timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
-                        fut_right.await;
-                        Ok(()) as Result<()>
-                    })
-                        .await;
-                    Err(anyhow::anyhow!("tcp proxy copy local to remote error: {:?}", e))?
-                }
-                Either::Right((Err(e), fut_left)) => {
-                    debug!("udp copy to local closed");
-                    std::mem::drop(fut_left);
-                    // timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
-                    //     fut_left.await;
-                    //     Ok(()) as Result<()>
-                    // })
-                    //     .await;
-                    Err(anyhow::anyhow!("tcp proxy copy remote to local error: {:?}", e))?
-                }
-                Either::Left((Ok(_), right_fut)) => {
-                    timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
-                        right_fut.await;
-                        Ok(()) as Result<()>
-                    })
-                        .await
-                },
-                Either::Right((Ok(_), left_fut)) => {
-                    timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
-                        left_fut.await;
-                        Ok(()) as Result<()>
-                    })
-                        .await
-                }
-            };
+            let copy_future = copy_future::CopyFuture::new(tls_stream, tcp_stream, Duration::from_secs(10));
+
+            copy_future.await?;
+
+            // let s_t = format!("{}->{}", source, addr.to_string());
+            // let t_s = format!("{}->{}", addr.to_string(), source);
+            // let source_to_target_ft = async {
+            //     match copy(&mut target_stream, &mut from_tls_sink).await {
+            //         Ok(len) => {
+            //             debug!("total {} bytes copied from source to target: {}", len, s_t);
+            //         }
+            //         Err(err) => {
+            //             error!("{} error copying: {}", s_t, err);
+            //         }
+            //     }
+            //     from_tls_sink.close().await?;
+            //     Ok(()) as Result<()>
+            // };
+            //
+            // let target_to_source_ft = async {
+            //     match copy(&mut from_tls_stream, &mut target_sink).await {
+            //         Ok(len) => {
+            //             debug!("total {} bytes copied from target: {}", len, t_s);
+            //         }
+            //         Err(err) => {
+            //             error!("{} error copying: {}", t_s, err);
+            //         }
+            //     }
+            //     // tcp_stream.close().await?;
+            //     Ok(()) as Result<()>
+            // };
+            // futures::pin_mut!(source_to_target_ft);
+            // futures::pin_mut!(target_to_source_ft);
+            // // spawn(source_to_target_ft);
+            // // spawn(target_to_source_ft);
+            // let res = futures::future::select(source_to_target_ft, target_to_source_ft).await;
+            // match res {
+            //     Either::Left((Err(e), fut_right)) => {
+            //         debug!("udp copy to remote closed");
+            //         std::mem::drop(fut_right);
+            //         // let _ = timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
+            //         //     fut_right.await;
+            //         //     Ok(()) as Result<()>
+            //         // })
+            //         //     .await;
+            //         Err(anyhow::anyhow!("tcp proxy copy local to remote error: {:?}", e))?
+            //     }
+            //     Either::Right((Err(e), fut_left)) => {
+            //         debug!("udp copy to local closed");
+            //         std::mem::drop(fut_left);
+            //         // timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
+            //         //     fut_left.await;
+            //         //     Ok(()) as Result<()>
+            //         // })
+            //         //     .await;
+            //         Err(anyhow::anyhow!("tcp proxy copy remote to local error: {:?}", e))?
+            //     }
+            //     Either::Left((Ok(_), right_fut)) => {
+            //         timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
+            //             right_fut.await?;
+            //             Ok(()) as Result<()>
+            //         })
+            //             .await
+            //     },
+            //     Either::Right((Ok(_), left_fut)) => {
+            //         timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
+            //             left_fut.await?;
+            //             Ok(()) as Result<()>
+            //         })
+            //             .await
+            //     }
+            // };
+            // use std::net::Shutdown;
+            // tcp_stream.shutdown(Shutdown::Both)?;
+            // tls_inner.shutdown(Shutdown::Both)?;
+
             // Ok(RequestHeader::TcpConnect(hash_buf, addr))
         }
         CMD_UDP_ASSOCIATE => {
@@ -420,6 +452,7 @@ async fn proxy(
             let outbound = UdpSocket::bind(SocketAddr::from(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0)))
                 .await
                 .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+            // let tls_inner = tls_stream;
             let (mut tls_stream_reader, mut tls_stream_writer) = tls_stream.split();
 
             let client_to_server = async {
@@ -440,7 +473,7 @@ async fn proxy(
                         tls_stream_reader.read_exact(&mut buf[..header.payload_len as usize]).await?;
                         Ok(()) as Result<()>
                     })
-                        .await
+                    .await
                     {
                         Ok(_) => {}
                         Err(e) => {
@@ -472,17 +505,16 @@ async fn proxy(
 
                 loop {
                     match timeout(std::time::Duration::from_secs(60), async {
-                        let (len, dst) =
-                            outbound.recv_from(&mut buf).await?;
+                        let (len, dst) = outbound.recv_from(&mut buf).await?;
                         // if len == 0 {
                         //     break
                         // }
-                        Ok((len,dst)) as Result<(usize,SocketAddr)>
+                        Ok((len, dst)) as Result<(usize, SocketAddr)>
                         // (len,dst)
                     })
-                        .await?
+                    .await?
                     {
-                        Ok((len,dst)) => {
+                        Ok((len, dst)) => {
                             if len == 0 {
                                 break
                             }
@@ -510,40 +542,41 @@ async fn proxy(
             match res {
                 Either::Left((Err(e), fut_right)) => {
                     debug!("udp copy to remote closed");
-                    // std::mem::drop(fut_right);
-                    timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
-                        fut_right.await;
-                        Ok(()) as Result<()>
-                    })
-                        .await;
+                    std::mem::drop(fut_right);
+                    // timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
+                    //     fut_right.await;
+                    //     Ok(()) as Result<()>
+                    // })
+                    //     .await;
                     Err(anyhow::anyhow!("UdpAssociate copy local to remote error: {:?}", e))?
                 }
                 Either::Right((Err(e), fut_left)) => {
                     debug!("udp copy to local closed");
-                    // std::mem::drop(fut_left);
-                    timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
-                        fut_left.await;
-                        Ok(()) as Result<()>
-                    })
-                        .await;
+                    std::mem::drop(fut_left);
+                    // timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
+                    //     fut_left.await;
+                    //     Ok(()) as Result<()>
+                    // })
+                    //     .await;
                     Err(anyhow::anyhow!("UdpAssociate copy remote to local error: {:?}", e))?
                 }
                 Either::Left((Ok(_), fut_right)) => {
-                    timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
-                        fut_right.await;
+                    timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
+                        fut_right.await?;
                         Ok(()) as Result<()>
                     })
-                        .await
-                },
+                    .await
+                }
                 Either::Right((Ok(_), fut_left)) => {
-                    timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
-                        fut_left.await;
+                    timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
+                        fut_left.await?;
                         Ok(()) as Result<()>
                     })
-                        .await
+                    .await
                 }
             };
-
+            use std::net::Shutdown;
+            // tls_inner.shutdown(Shutdown::Both)?;
             // Ok(RequestHeader::UdpAssociate(hash_buf))
         }
         _ => {

@@ -47,8 +47,8 @@ enum Role {
 }
 #[derive(Deserialize, Debug)]
 struct RequestBody {
-    user_id: String,
-    platform: Platform
+    user_id: String
+    // platform: Platform
 }
 
 impl From<User> for UserResponseBody {
@@ -117,7 +117,13 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
             })?;
 
             let servers = ResponseEntity::Server(ServerNode {
-                server: vec![ServerAddr { ip: node.addr.ip.clone(), port: node.addr.port, country: None, city: None, passwd: None }]
+                server: vec![ServerAddr {
+                    ip: node.addr.ip.clone(),
+                    port: node.addr.port,
+                    country: None,
+                    city: None,
+                    passwd: None
+                }]
             });
             nodes.push_back(node);
             drop(nodes);
@@ -158,8 +164,20 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
 
             let servers = ResponseEntity::Server(ServerNode {
                 server: vec![
-                    ServerAddr { ip: node.addr.ip.clone(), port: node.addr.port, country: Some("United States".to_string()), city: Some("Texas City".to_string()), passwd: Some("251f6edc".to_string()) },
-                    ServerAddr { ip: "walkonbits.live".to_string(), port: 90, country: Some("Japan".to_string()), city: Some("Tokyo".to_string()), passwd: Some("251f6edc".to_string()) },
+                    ServerAddr {
+                        ip: node.addr.ip.clone(),
+                        port: node.addr.port,
+                        country: Some("United States".to_string()),
+                        city: Some("Texas City".to_string()),
+                        passwd: Some("251f6edc".to_string())
+                    },
+                    ServerAddr {
+                        ip: "walkonbits.live".to_string(),
+                        port: 90,
+                        country: Some("Japan".to_string()),
+                        city: Some("Tokyo".to_string()),
+                        passwd: Some("251f6edc".to_string())
+                    },
                 ]
             });
             nodes.push_back(node);

@@ -33,8 +33,8 @@ async-process = "1.2.0"
 async-global-executor = {version = "2.0.2"}
 
 #mimalloc = "0.1.26"
-[target.'cfg(not(target_env = "msvc"))'.dependencies]
-tikv-jemallocator = "0.4.0"
+#[target.'cfg(not(target_env = "msvc"))'.dependencies]
+#tikv-jemallocator = "0.4.0"
 
 #flume = "0.10.9"
 async-channel = "1.6.1"
@@ -49,9 +49,18 @@ acmed = {path = "../acmed" }
 version = "3.0.0-beta.4"
 default-features = false
 features = ["std","derive"]
+
+
+
+[features]
+default = ["trojan/default"]
+
+
+
 [[bin]]
 name = "ostrich_node"
 path = "./src/node.rs"
+required-features = ["default"]
 #[[bin]]
 #name = "ostrich_service"
 #path = "./src/service.rs"

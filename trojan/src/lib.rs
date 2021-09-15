@@ -1,6 +1,12 @@
 pub mod config;
 // mod copy;
+mod copy_future;
 mod proxy;
+mod ws;
+// mod deplex;
+// mod read_buf;
+// mod util;
+
 use anyhow::anyhow;
 use bytes::{Buf, BufMut};
 use errors::{Error, Result};
