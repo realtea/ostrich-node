@@ -47,8 +47,7 @@ enum Role {
 }
 #[derive(Deserialize, Debug)]
 struct RequestBody {
-    user_id: String
-    // platform: Platform
+    user_id: String // platform: Platform
 }
 
 impl From<User> for UserResponseBody {

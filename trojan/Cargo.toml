@@ -31,7 +31,9 @@ hex = "0.4.3"
 heapless = "0.7.5"
 async-channel = "1.6.1"
 async-tungstenite = {version = "0.15.0"}
-
+spin = { version = "0.9", features = ["std"] }
+lru_time_cache = "0.11"
+socket2 = "0.3"
 ws_stream_tungstenite = {path = "../ws_stream_tungstenite",optional = true}
 
 [dev-dependencies]

@@ -1,5 +1,5 @@
 #![allow(unreachable_code)]
-use crate::{copy_future, load_certs, load_keys, Address};
+use crate::{load_certs, load_keys, tcp, Address};
 use async_std::{
     future::timeout,
     net::{TcpListener, TcpStream, UdpSocket},
@@ -21,6 +21,7 @@ use std::{
     sync::Arc,
     time::Duration
 };
+use std::net::ToSocketAddrs;
 
 cfg_if::cfg_if! {
     if #[cfg(wss)] {
@@ -44,7 +45,13 @@ pub struct ProxyBuilder {
     authenticator: Vec<String>,
     fallback: String
 }
-
+#[inline]
+fn to_ipv6_address(addr: &SocketAddr) -> SocketAddrV6 {
+    match addr {
+        SocketAddr::V4(ref a) => SocketAddrV6::new(a.ip().to_ipv6_mapped(), a.port(), 0, 0),
+        SocketAddr::V6(ref a) => *a,
+    }
+}
 
 impl ProxyBuilder {
     pub fn new(addr: String, key: String, cert: String, authenticator: Vec<String>, fallback: String) -> Self {
@@ -53,6 +60,24 @@ impl ProxyBuilder {
 
     pub async fn start(self, mut receiver: async_channel::Receiver<bool>) -> Result<()> {
         // let listener = TcpListener::bind(&self.addr).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+        // let addr: SocketAddr = self.addr
+        //     .parse()
+        //     .expect("Unable to parse socket address");
+
+        // let ipv6 = to_ipv6_address(addr);
+        // use socket2::{Domain, Socket, Type};
+        // let socket = Socket::new(Domain::ipv6(), Type::stream(), None)?;
+        // socket.set_only_v6(false)?;
+        // socket.set_nonblocking(true)?;
+        // socket.set_read_timeout(Some(Duration::from_secs(60)))?;
+        // socket.set_write_timeout(Some(Duration::from_secs(60)))?;
+        // socket.set_linger(Some(Duration::from_secs(10)))?;
+        // socket.set_keepalive(Some(Duration::from_secs(60)))?;
+        // socket.bind(&ipv6.into())?;
+        // socket.listen(128)?;
+        // let listener = TcpListener::from(socket.into_tcp_listener());
+
+
         let listener = TcpListener::bind(&self.addr).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
         info!("proxy started at: {}", self.addr);
 
@@ -365,7 +390,7 @@ async fn proxy<#[cfg(feature = "wss")] S: AsyncRead + AsyncWrite + Unpin + Send>
             // let tls_inner = tls_stream.io.clone();
             // let (mut from_tls_stream, mut from_tls_sink) = tls_stream.split();
 
-            let copy_future = copy_future::CopyFuture::new(tls_stream, tcp_stream, Duration::from_secs(10));
+            let copy_future = tcp::CopyFuture::new(tls_stream, tcp_stream, Duration::from_secs(5));
 
             copy_future.await?;
 
@@ -457,8 +482,8 @@ async fn proxy<#[cfg(feature = "wss")] S: AsyncRead + AsyncWrite + Unpin + Send>
 
             let client_to_server = async {
                 // let mut buf = [0u8; RELAY_BUFFER_SIZE];
-                let mut buf: StackVec<u8, RELAY_BUFFER_SIZE> = StackVec::new();
-                buf.resize(RELAY_BUFFER_SIZE, 0);
+                let mut buf: StackVec<u8, 65535> = StackVec::new();
+                // buf.resize(RELAY_BUFFER_SIZE, 0);
 
                 loop {
                     // error!("client_to_server never end");
@@ -466,10 +491,11 @@ async fn proxy<#[cfg(feature = "wss")] S: AsyncRead + AsyncWrite + Unpin + Send>
                     if header.payload_len == 0 {
                         break
                     }
+                    buf.resize(header.payload_len as usize, 0);
 
                     // tls_stream_reader.read_exact(&mut buf[..header.payload_len as usize]).await?;
 
-                    match timeout(std::time::Duration::from_secs(60), async {
+                    match timeout(std::time::Duration::from_secs(5), async {
                         tls_stream_reader.read_exact(&mut buf[..header.payload_len as usize]).await?;
                         Ok(()) as Result<()>
                     })
@@ -500,11 +526,21 @@ async fn proxy<#[cfg(feature = "wss")] S: AsyncRead + AsyncWrite + Unpin + Send>
             };
             let server_to_client = async {
                 // let mut buf = [0u8; RELAY_BUFFER_SIZE];
-                let mut buf: StackVec<u8, RELAY_BUFFER_SIZE> = StackVec::new();
-                buf.resize(RELAY_BUFFER_SIZE, 0);
+                let mut buf: StackVec<u8, 65535> = StackVec::new();
+                buf.resize(65535 , 0);
 
                 loop {
-                    match timeout(std::time::Duration::from_secs(60), async {
+                    // let (len, dst) = outbound.recv_from(&mut buf).await?;
+                    //
+                    // if len == 0 {
+                    //     break
+                    // }
+                    // let header = UdpAssociateHeader::new(&Address::from(dst), len);
+                    // header.write_to(&mut tls_stream_writer).await?;
+                    // tls_stream_writer.write_all(&buf[..len]).await?;
+                    // debug!("udp copy to client: {} bytes", len);
+
+                    match timeout(std::time::Duration::from_secs(15), async {
                         let (len, dst) = outbound.recv_from(&mut buf).await?;
                         // if len == 0 {
                         //     break
@@ -575,7 +611,7 @@ async fn proxy<#[cfg(feature = "wss")] S: AsyncRead + AsyncWrite + Unpin + Send>
                     .await
                 }
             };
-            use std::net::Shutdown;
+            // use std::net::Shutdown;
             // tls_inner.shutdown(Shutdown::Both)?;
             // Ok(RequestHeader::UdpAssociate(hash_buf))
         }
