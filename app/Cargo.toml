@@ -31,7 +31,7 @@ chrono = "0.4.19"
 surf = "2.2.0"
 async-process = "1.2.0"
 async-global-executor = {version = "2.0.2"}
-
+smolscale = "0.3.16"
 #mimalloc = "0.1.26"
 #[target.'cfg(not(target_env = "msvc"))'.dependencies]
 #tikv-jemallocator = "0.4.0"

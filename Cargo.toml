@@ -6,7 +6,8 @@ members = [
 "async-tls",
 "service",
 "command",
-    "acmed"
+"acmed",
+"runtime"
 ]
 [profile.release]
 opt-level = 3

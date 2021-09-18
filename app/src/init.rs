@@ -3,10 +3,7 @@
 use crate::{build_cmd_response, create_cmd_user, DEFAULT_COMMAND_ADDR, DEFAULT_REGISTER_PORT};
 use acmed::{config::Config as AcmeConfig, errors::Context, sandbox};
 use async_process::Command;
-use async_std::{
-    net::UdpSocket,
-    task::{sleep, spawn}
-};
+use async_std::{net::UdpSocket, task::sleep};
 use bytes::BytesMut;
 use command::frame::Frame;
 use errors::{Error, Result};
@@ -21,6 +18,7 @@ use service::{
     db::{create_db, model::EntityId},
     http::tide::serve_register
 };
+use smolscale::spawn;
 use std::{env, fs, ops::Sub, os::unix::process::ExitStatusExt, sync::Arc, time::Duration};
 use trojan::config::Config;
 
@@ -109,7 +107,8 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
             }
         }
         Ok(()) as Result<()>
-    });
+    })
+    .detach();
 
     // spawn(async move {
     //     loop {
@@ -130,7 +129,8 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
         serve_register(socket.as_str(), state).await?;
         Ok(()) as Result<()>
         // });
-    });
+    })
+    .detach();
     spawn(async move {
         loop {
             sleep(Duration::from_secs(5 * 60 + 11)).await;
@@ -152,7 +152,8 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
             drop(nodes);
         }
         Ok(()) as Result<()>
-    });
+    })
+    .detach();
 
     spawn(async move {
         let socket = UdpSocket::bind(DEFAULT_COMMAND_ADDR).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
@@ -195,7 +196,8 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
             }
         }
         Ok(()) as Result<()>
-    });
+    })
+    .detach();
     Ok(())
 }
 pub async fn acmed_service(acmed_config: &AcmeConfig, sender: async_channel::Sender<bool>) -> Result<()> {
@@ -250,6 +252,7 @@ pub async fn acmed_service(acmed_config: &AcmeConfig, sender: async_channel::Sen
             }
         }
         Ok(()) as Result<()>
-    });
+    })
+    .detach();
     Ok(()) as Result<()>
 }
