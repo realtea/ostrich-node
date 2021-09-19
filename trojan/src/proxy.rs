@@ -12,25 +12,20 @@ use smolscale::spawn;
 // use futures_lite::io::copy;
 use async_std::sync::Mutex;
 use async_std_resolver::{config, resolver, AsyncStdResolver};
-use futures::{
-    channel::mpsc,
-    io::{ReadHalf, WriteHalf}
-};
+use futures::io::{ReadHalf, WriteHalf};
 use futures_util::{
     future::Either, io::AsyncReadExt, stream::StreamExt, AsyncRead, AsyncWrite, AsyncWriteExt, FutureExt
 };
 use heapless::Vec as StackVec;
 use log::{debug, error, info};
-use lru_time_cache::{LruCache, TimedEntry};
-use once_cell::sync::Lazy;
+use lru_time_cache::LruCache;
 use rustls::{NoClientAuth, ServerConfig};
 use std::{
     io,
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs},
+    net::{Ipv6Addr, SocketAddr, SocketAddrV6},
     sync::Arc,
     time::Duration
 };
-use std::borrow::BorrowMut;
 
 
 cfg_if::cfg_if! {
@@ -66,7 +61,7 @@ pub struct ProxyBuilder {
 async fn udp_downstream(udp_socket: Arc<UdpSocket>, udp_associate: Arc<Mutex<AssociationMap>>) -> Result<()> {
     // let mut buf = [0u8; RELAY_BUFFER_SIZE];
     let mut buf: StackVec<u8, 2048> = StackVec::new();
-    buf.resize(2048, 0);
+    buf.resize(2048, 0).map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
 
     loop {
         // match timeout(std::time::Duration::from_secs(15), async {
@@ -83,24 +78,28 @@ async fn udp_downstream(udp_socket: Arc<UdpSocket>, udp_associate: Arc<Mutex<Ass
         if len == 0 {
             break
         }
-
         let ipv6_dst = to_ipv6_address(&dst);
         let mut is_err: bool = false;
         let mut udps = udp_associate.lock().await;
         if let Some(mut write_half) = udps.get_mut(&ipv6_dst) {
             // error!("udp_downstream: associate get: {:?}",&ipv6_dst);
-
             let header = UdpAssociateHeader::new(&Address::from(dst), len);
-            header.write_to(&mut write_half).await.map_err(|e| {
-                is_err = true;
-                write_half.close();
-                e
-            })?;
-            write_half.write_all(&buf[..len]).await.map_err(|e| {
-                is_err = true;
-                write_half.close();
-                e
-            })?;
+            match header.write_to(&mut write_half).await {
+                Ok(_) => {}
+                Err(_) => {
+                    is_err = true;
+                    write_half.flush().await?;
+                    write_half.close().await?;
+                }
+            }
+            match write_half.write_all(&buf[..len]).await {
+                Ok(_) => {}
+                Err(_) => {
+                    is_err = true;
+                    write_half.flush().await?;
+                    write_half.close().await?;
+                }
+            }
             debug!("udp_downstream: {} bytes", len);
         }
         if is_err {
@@ -118,8 +117,14 @@ async fn udp_downstream(udp_socket: Arc<UdpSocket>, udp_associate: Arc<Mutex<Ass
 // let ipv6_dst = to_ipv6_address(&dst);
 // let mut udps = udp_associate.lock().await;
 
-async fn udp_upstream<T>(mut inbound: ReadHalf<T>, outbound: Arc<UdpSocket>,udp_associate: Arc<Mutex<AssociationMap>>,ipv6_dst: &SocketAddrV6) -> Result<()>
-where T: AsyncRead {
+async fn udp_upstream<T>(
+    mut inbound: ReadHalf<T>,
+    outbound: Arc<UdpSocket>
+    // udp_associate: Arc<Mutex<AssociationMap>> // ,ipv6_dst: &SocketAddrV6
+) -> Result<()>
+where
+    T: AsyncRead
+{
     let mut buf: StackVec<u8, 2048> = StackVec::new();
 
     loop {
@@ -128,12 +133,13 @@ where T: AsyncRead {
         if header.payload_len == 0 {
             break
         }
-        buf.resize(header.payload_len as usize, 0);
+        buf.resize(header.payload_len as usize, 0)
+            .map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
         // let dst = header.addr;
         // tls_stream_reader.read_exact(&mut buf[..header.payload_len as usize]).await?;
 
         // let is_err:  bool = false;
-        match timeout(std::time::Duration::from_secs(5), async {
+        match timeout(std::time::Duration::from_secs(7), async {
             inbound.read_exact(&mut buf[..header.payload_len as usize]).await?;
             Ok(()) as Result<()>
         })
@@ -142,35 +148,35 @@ where T: AsyncRead {
             Ok(_) => {}
             Err(e) => {
                 error!("reading client socket timeout:{:?}", e);
-                let mut udps = udp_associate.lock().await;
-                match udps.remove(&ipv6_dst){
-                    None => {}
-                    Some(mut writer) => {writer.close().await?;}
-                }
+                // let mut udps = udp_associate.lock().await;
+                // match udps.remove(&ipv6_dst){
+                //     None => {}
+                //     Some(mut writer) => {writer.close().await?;}
+                // }
                 break
             }
         }
-        debug!("udp_upstream: {}:{}", &ipv6_dst,&header.addr);
+        // debug!("udp_upstream: {}:{}", &ipv6_dst,&header.addr);
         match outbound.send_to(&buf[..header.payload_len as usize], header.addr.to_string()).await {
             Ok(n) => {
                 debug!("udp_upstream: {} bytes", n);
 
                 if n == 0 {
-                    let mut udps = udp_associate.lock().await;
-                    match udps.remove(&ipv6_dst){
-                        None => {}
-                        Some(mut writer) => {writer.close().await?;}
-                    }
+                    // let mut udps = udp_associate.lock().await;
+                    // match udps.remove(&ipv6_dst){
+                    //     None => {}
+                    //     Some(mut writer) => {writer.close().await?;}
+                    // }
                     break
                 }
             }
             Err(e) => {
                 error!("udp send to upstream error: {:?}", e);
-                let mut udps = udp_associate.lock().await;
-                match udps.remove(&ipv6_dst){
-                    None => {}
-                    Some(mut writer) => {writer.close().await?;}
-                }
+                // let mut udps = udp_associate.lock().await;
+                // match udps.remove(&ipv6_dst){
+                //     None => {}
+                //     Some(mut writer) => {writer.close().await?;}
+                // }
                 break
             }
         }
@@ -187,9 +193,7 @@ impl ProxyBuilder {
         let udp_socket = UdpSocket::bind(SocketAddr::from(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0))).await?;
 
         let udp_socket = Arc::new(udp_socket);
-
         let udp_associate: SharedAssociationMap = Arc::new(Mutex::new(LruCache::with_expiry_duration(time_to_live)));
-
 
         let downstream_associate = udp_associate.clone();
         let udp = udp_socket.clone();
@@ -219,7 +223,6 @@ impl ProxyBuilder {
                 //         w.close().await?;
                 //     }
                 // }
-
             }
             Ok(()) as Result<()>
         })
@@ -230,9 +233,7 @@ impl ProxyBuilder {
 
     pub async fn start(self, mut receiver: async_channel::Receiver<bool>) -> Result<()> {
         // let listener = TcpListener::bind(&self.addr).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
-        let addr: SocketAddr = self.addr
-            .parse()
-            .expect("Unable to parse socket address");
+        let addr: SocketAddr = self.addr.parse().expect("Unable to parse socket address");
 
         let ipv6 = to_ipv6_address(&addr);
         use socket2::{Domain, Socket, Type};
@@ -253,7 +254,6 @@ impl ProxyBuilder {
                 .expect("failed to connect resolver")
         );
 
-
         // let listener = TcpListener::bind(&self.addr).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
         info!("proxy started at: {}", self.addr);
 
@@ -266,27 +266,6 @@ impl ProxyBuilder {
 
         let mut incoming = listener.incoming();
         use futures::select;
-
-        // let mut receiver = receiver.into_stream();
-        // let incoming_stream = incoming.next().fuse().or_else();
-        // loop {
-        //     select! {
-        //         incoming_stream = incoming.next().fuse() => {
-        //             let shared_authenticator = Arc::new(self.authenticator.clone());
-        //             let acceptor = Arc::new(self.acceptor.clone());
-        //             let fallback = self.fallback.clone();
-        //             let incoming_stream = incoming_stream.unwrap().unwrap();
-        //             Local::local(async move {
-        //                 process_stream(acceptor.clone(), incoming_stream, shared_authenticator.clone(),
-        // fallback.clone()).await             })
-        //             .detach();
-        //         },
-        //         _ = receiver.next().fuse() =>{
-        //             warn!("proxy process do exit");
-        //             break
-        //         }
-        //     }
-        // }
         loop {
             // let mut receiver = receiver.clone();
             select! {
@@ -314,21 +293,6 @@ impl ProxyBuilder {
                 }
             }
         }
-        // while let Some(Ok(incoming_stream)) = incoming.next().await {
-        //     // spawn(process_stream(
-        //     //     acceptor,
-        //     //     incoming_stream,
-        //     //     shared_authenticator.clone(),
-        //     //     self.fallback.clone(),
-        //     // ));
-        //     let shared_authenticator = Arc::new(self.authenticator.clone());
-        //     let acceptor = Arc::new(self.acceptor.clone());
-        //     let fallback = self.fallback.clone();
-        //     Local::local(async move {
-        //         process_stream(acceptor.clone(), incoming_stream, shared_authenticator.clone(),
-        // fallback.clone()).await     })
-        //     .detach();
-        // }
         Ok(())
     }
 }
@@ -438,8 +402,11 @@ const CMD_UDP_ASSOCIATE: u8 = 0x03;
 const READ_TIMEOUT_WHEN_ONE_SHUTDOWN: std::time::Duration = std::time::Duration::from_secs(5);
 
 async fn redirect_fallback<#[cfg(feature = "wss")] S: AsyncRead + AsyncWrite + Unpin + Send>(
-    source: &str, target: &str, #[cfg(not(feature = "wss"))] mut tls_stream: TlsStream<TcpStream>,
-    #[cfg(feature = "wss")] mut tls_stream: WsStream<S>, buf: &[u8]
+    // source: &str,
+    target: &str,
+    #[cfg(not(feature = "wss"))] tls_stream: TlsStream<TcpStream>,
+    #[cfg(feature = "wss")] mut tls_stream: WsStream<S>,
+    buf: &[u8]
 ) -> Result<()> {
     let mut tcp_stream = TcpStream::connect(target).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
 
@@ -530,32 +497,29 @@ async fn proxy(
     udp_associate: SharedAssociationMap, udp_socket: Arc<UdpSocket>, resolver: Arc<AsyncStdResolver>
 ) -> Result<()> {
     let mut passwd_buf: StackVec<u8, HASH_STR_LEN> = StackVec::new();
-    passwd_buf.resize(HASH_STR_LEN, 0);
+    passwd_buf.resize(HASH_STR_LEN, 0).map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
 
     let len = tls_stream.read(&mut passwd_buf).await?;
     if len != HASH_STR_LEN {
-        // first_packet.extend_from_slice(&hash_buf[..len]);
         error!("first packet too short");
-        redirect_fallback(&source, &fallback, tls_stream, &passwd_buf).await?;
+        redirect_fallback(/* &source, */ &fallback, tls_stream, &passwd_buf).await?;
 
         return Err(Error::Eor(anyhow::anyhow!("first packet too short")))
     }
     debug!("received client passwd: {:?}", String::from_utf8_lossy(&passwd_buf).to_string());
     if !authenticator.contains(&String::from_utf8_lossy(&passwd_buf).to_string()) {
         debug!("authentication failed, dropping connection");
-        redirect_fallback(&source, &fallback, tls_stream, &passwd_buf).await?;
+        redirect_fallback(/* &source, */ &fallback, tls_stream, &passwd_buf).await?;
         return Err(Error::Eor(anyhow::anyhow!("authenticate failed")))
     } else {
         debug!("authentication succeeded");
     }
-    // let mut crlf_buf = [0u8; 2];
-    // let mut cmd_buf = [0u8; 1];
 
     let mut crlf_buf: StackVec<u8, 2> = StackVec::new();
-    crlf_buf.resize(2, 0);
+    crlf_buf.resize(2, 0).map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
 
     let mut cmd_buf: StackVec<u8, 1> = StackVec::new();
-    cmd_buf.resize(1, 0);
+    cmd_buf.resize(1, 0).map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
 
     tls_stream.read_exact(&mut crlf_buf).await?;
     tls_stream.read_exact(&mut cmd_buf).await?;
@@ -566,24 +530,11 @@ async fn proxy(
         CMD_TCP_CONNECT => {
             debug!("TcpConnect target addr: {:?}", addr);
 
-            let mut tcp_stream =
+            let tcp_stream =
                 TcpStream::connect(addr.to_string()).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
-
-            // let mut target_stream = tcp_stream.clone();
-            // let mut target_sink = tcp_stream.clone();
-
             debug!("connect to target: {} from source: {}", addr, source);
 
-            // use crate::deplex::Duplex;
-            // let duplex = Duplex::new(tls_stream,tcp_stream);
-            // duplex.await?;
-
-            // let (mut target_stream, mut target_sink) = tcp_stream.split();
-            // let tls_inner = tls_stream.io.clone();
-            // let (mut from_tls_stream, mut from_tls_sink) = tls_stream.split();
-
             let copy_future = tcp::CopyFuture::new(tls_stream, tcp_stream, Duration::from_secs(10));
-
             copy_future.await?;
 
             // let s_t = format!("{}->{}", source, addr.to_string());
@@ -663,7 +614,7 @@ async fn proxy(
         CMD_UDP_ASSOCIATE => {
             debug!("UdpAssociate target addr: {:?}", addr);
 
-            let (mut tls_stream_reader, mut tls_stream_writer) = tls_stream.split();
+            let (mut tls_stream_reader, tls_stream_writer) = tls_stream.split();
             let ipv6_addr = addr.to_ipv6(&resolver).await?;
             let cached = {
                 // let ipv6_addr = addr.to_ipv6(&resolver).await?;
@@ -706,7 +657,8 @@ async fn proxy(
                         if header.payload_len == 0 {
                             break
                         }
-                        buf.resize(header.payload_len as usize, 0);
+                        buf.resize(header.payload_len as usize, 0)
+                            .map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
 
                         // tls_stream_reader.read_exact(&mut buf[..header.payload_len as usize]).await?;
 
@@ -742,7 +694,7 @@ async fn proxy(
                 let server_to_client = async {
                     // let mut buf = [0u8; RELAY_BUFFER_SIZE];
                     let mut buf: StackVec<u8, 2048> = StackVec::new();
-                    buf.resize(2048, 0);
+                    buf.resize(2048, 0).map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
 
                     loop {
                         // let (len, dst) = outbound.recv_from(&mut buf).await?;
@@ -794,11 +746,11 @@ async fn proxy(
                     Either::Left((Err(e), fut_right)) => {
                         debug!("udp copy to remote closed");
                         // std::mem::drop(fut_right);
-                        timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
-                            fut_right.await;
+                        let _ = timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
+                            fut_right.await?;
                             Ok(()) as Result<()>
                         })
-                            .await;
+                        .await?;
                         Err(anyhow::anyhow!("UdpAssociate copy local to remote error: {:?}", e))?
                     }
                     Either::Right((Err(e), fut_left)) => {
@@ -816,14 +768,14 @@ async fn proxy(
                             fut_right.await?;
                             Ok(()) as Result<()>
                         })
-                        .await
+                        .await?
                     }
                     Either::Right((Ok(_), fut_left)) => {
                         timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
                             fut_left.await?;
                             Ok(()) as Result<()>
                         })
-                        .await
+                        .await?
                     }
                 };
                 return Err(anyhow::anyhow!("{:?}", ret))?
@@ -831,7 +783,16 @@ async fn proxy(
                 // tls_inner.shutdown(Shutdown::Both)?;
                 // Ok(RequestHeader::UdpAssociate(hash_buf))
             }
-            udp_upstream(tls_stream_reader, udp_socket,udp_associate.clone(),&ipv6_addr).await?;
+            udp_upstream(tls_stream_reader, udp_socket /* , udp_associate.clone()*/ /* &ipv6_addr */).await?;
+
+            let mut udps = udp_associate.lock().await;
+            match udps.remove(&ipv6_addr) {
+                None => {}
+                Some(mut writer) => {
+                    writer.flush().await?;
+                    writer.close().await?;
+                }
+            }
         }
         _ => {
             error!("cant decode incoming stream");

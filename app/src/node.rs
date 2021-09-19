@@ -6,22 +6,11 @@ use errors::{Error, Result};
 // use glommio::{channels::shared_channel, CpuSet, Local, LocalExecutorPoolBuilder, Placement,enclose};
 use app::init::{acmed_service, service_init};
 use async_process::Command;
-use async_std::{
-    net::{TcpStream, UdpSocket},
-    sync::Mutex,
-    task::sleep
-};
-use async_tls::client::TlsStream;
+use async_std::task::sleep;
 use log::{error, info};
 use smolscale::block_on;
-use std::{
-    fs,
-    net::{Ipv6Addr, SocketAddr, SocketAddrV6, ToSocketAddrs},
-    path::Path,
-    sync::Arc,
-    time::Duration
-};
-use trojan::{config::set_config, generate_authenticator, ProxyBuilder, SharedAssociationMap};
+use std::{fs, path::Path, time::Duration};
+use trojan::{config::set_config, generate_authenticator, ProxyBuilder};
 
 // use mimalloc::MiMalloc;
 //

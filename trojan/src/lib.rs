@@ -3,7 +3,7 @@ pub mod config;
 // mod association;
 mod proxy;
 mod tcp;
-mod udp;
+// mod udp;
 mod ws;
 // mod deplex;
 // mod read_buf;
@@ -26,7 +26,7 @@ use std::{
     fmt::{Debug, Formatter},
     fs::File,
     io::{BufReader, Cursor},
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     path::Path,
     sync::Arc
 };
@@ -203,7 +203,7 @@ impl Address {
             Address::SocketAddress(addr) => Ok(to_ipv6_address(&addr)),
 
             Address::DomainNameAddress(ref addr, ref port) => {
-                let mut response = resolver
+                let response = resolver
                     .lookup_ip(addr)
                     .await
                     .map_err(|e| {
