@@ -6,18 +6,22 @@ use errors::{Error, Result};
 // use glommio::{channels::shared_channel, CpuSet, Local, LocalExecutorPoolBuilder, Placement,enclose};
 use app::init::{acmed_service, service_init};
 use async_process::Command;
-use async_std::task::sleep;
+use async_std::{
+    net::{TcpStream, UdpSocket},
+    sync::Mutex,
+    task::sleep
+};
+use async_tls::client::TlsStream;
 use log::{error, info};
 use smolscale::block_on;
-use std::{fs, path::Path, time::Duration};
-use trojan::{config::set_config, generate_authenticator, ProxyBuilder};
-use async_std::net::{UdpSocket, TcpStream};
 use std::{
+    fs,
     net::{Ipv6Addr, SocketAddr, SocketAddrV6, ToSocketAddrs},
+    path::Path,
+    sync::Arc,
+    time::Duration
 };
-
-use std::sync::Arc;
-use async_tls::client::TlsStream;
+use trojan::{config::set_config, generate_authenticator, ProxyBuilder, SharedAssociationMap};
 
 // use mimalloc::MiMalloc;
 //
@@ -66,23 +70,16 @@ fn main() -> Result<()> {
     let proxy_addr = format!("{}:{}", "0.0.0.0", local_port);
 
 
-
     let _ = block_on(async move {
-
-        let udp_socket = UdpSocket::bind(SocketAddr::from(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0))).await?;
-
-        let udp_socket = Arc::new(udp_socket);
-
-        let proxy = ProxyBuilder::<TlsStream<TcpStream>>::new(
+        let proxy = ProxyBuilder::new(
             proxy_addr,
             key,
             cert,
             authenticator,
             DEFAULT_FALLBACK_ADDR.to_string(),
-            Duration::from_secs(60),
-            udp_socket
+            Duration::from_secs(60)
         )
-            .await?;
+        .await?;
         let _ = Command::new("nginx").arg("-s").arg("stop").status().await?;
         let _ = Command::new("systemctl").arg("stop").arg("nginx").status().await?;
         let _ = Command::new("killall").arg("-e").arg("nginx").status().await?;

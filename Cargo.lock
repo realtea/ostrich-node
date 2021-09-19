@@ -432,6 +432,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-std-resolver"
+version = "0.21.0-alpha.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b8b5bace9586f6fff540a883d2dfe3291f4c8b79f59a2ae924465b381d02691"
+dependencies = [
+ "async-std",
+ "async-trait",
+ "futures-io",
+ "futures-util",
+ "pin-utils",
+ "trust-dns-resolver 0.21.0-alpha.2",
+]
+
+[[package]]
 name = "async-task"
 version = "4.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1356,7 +1370,7 @@ dependencies = [
  "serde_json",
  "sqlx",
  "thiserror",
- "trust-dns-resolver",
+ "trust-dns-resolver 0.20.3",
 ]
 
 [[package]]
@@ -4151,6 +4165,7 @@ dependencies = [
  "anyhow",
  "async-channel",
  "async-std",
+ "async-std-resolver",
  "async-tls",
  "async-trait",
  "async-tungstenite",
@@ -4207,6 +4222,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "trust-dns-proto"
+version = "0.21.0-alpha.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09637dee9c56a62b9acd8ca59ab2ed9459d8430b005100d9063ea326a0a3590a"
+dependencies = [
+ "async-trait",
+ "cfg-if 1.0.0",
+ "data-encoding",
+ "enum-as-inner",
+ "futures-channel",
+ "futures-io",
+ "futures-util",
+ "idna",
+ "ipnet",
+ "lazy_static",
+ "log",
+ "rand 0.8.4",
+ "smallvec 1.6.1",
+ "thiserror",
+ "tinyvec",
+ "url",
+]
+
+[[package]]
 name = "trust-dns-resolver"
 version = "0.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4223,7 +4262,26 @@ dependencies = [
  "smallvec 1.6.1",
  "thiserror",
  "tokio 1.11.0",
- "trust-dns-proto",
+ "trust-dns-proto 0.20.3",
+]
+
+[[package]]
+name = "trust-dns-resolver"
+version = "0.21.0-alpha.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d449ae262d022d3f273e46483adbb8553e66327baa5c18717d7790e60d7c6721"
+dependencies = [
+ "cfg-if 1.0.0",
+ "futures-util",
+ "ipconfig",
+ "lazy_static",
+ "log",
+ "lru-cache",
+ "parking_lot 0.11.2",
+ "resolv-conf",
+ "smallvec 1.6.1",
+ "thiserror",
+ "trust-dns-proto 0.21.0-alpha.2",
 ]
 
 [[package]]

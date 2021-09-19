@@ -10,6 +10,7 @@ mod ws;
 // mod util;
 
 use anyhow::anyhow;
+use async_std_resolver::AsyncStdResolver;
 use bytes::{Buf, BufMut};
 use errors::{Error, Result};
 use futures::{AsyncRead, AsyncReadExt};
@@ -25,8 +26,9 @@ use std::{
     fmt::{Debug, Formatter},
     fs::File,
     io::{BufReader, Cursor},
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
-    path::Path
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    path::Path,
+    sync::Arc
 };
 
 pub fn load_certs(path: &Path) -> Result<Vec<Certificate>> {
@@ -60,10 +62,17 @@ pub fn generate_authenticator(passwd_list: &Vec<String>) -> Result<Vec<String>> 
     }
     Ok(authenticator)
 }
+#[inline]
+fn to_ipv6_address(addr: &SocketAddr) -> SocketAddrV6 {
+    match addr {
+        SocketAddr::V4(ref a) => SocketAddrV6::new(a.ip().to_ipv6_mapped(), a.port(), 0, 0),
+        SocketAddr::V6(ref a) => *a
+    }
+}
 
 /// the following code copy from
 /// https://github.com/p4gefau1t/trojan-r/blob/main/src/protocol/mod.rs
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum Address {
     /// Socket address (IP Address)
     SocketAddress(SocketAddr),
@@ -164,6 +173,52 @@ impl Address {
                 buf.put_u8(domain_name.len() as u8);
                 buf.put_slice(&domain_name.as_bytes()[..]);
                 buf.put_u16(*port);
+            }
+        }
+    }
+
+    pub fn to_socket_addr(self) -> Option<SocketAddr> {
+        let addr = match self {
+            Address::SocketAddress(addr) => Some(addr),
+            Address::DomainNameAddress(_, _) => None
+        };
+        addr
+    }
+
+    pub fn is_ipv4_unspecified(&self) -> bool {
+        match self {
+            Address::SocketAddress(SocketAddr::V4(addr)) => {
+                if addr.eq(&SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)) {
+                    return true
+                }
+                false
+            }
+            Address::SocketAddress(SocketAddr::V6(..)) => false,
+            Address::DomainNameAddress(_, _) => false
+        }
+    }
+
+    pub async fn to_ipv6(&self, resolver: &Arc<AsyncStdResolver>) -> Result<SocketAddrV6> {
+        match self {
+            Address::SocketAddress(addr) => Ok(to_ipv6_address(&addr)),
+
+            Address::DomainNameAddress(ref addr, ref port) => {
+                let mut response = resolver
+                    .lookup_ip(addr)
+                    .await
+                    .map_err(|e| {
+                        log::error!("loop ip domain: {},error: {:?}", addr, e);
+                        e
+                    })
+                    .expect("cant loop up domain name");
+
+                // There can be many addresses associated with the name,
+                //  this can return IPv4 and/or IPv6 addresses
+                let ip = response.iter().next().expect("no ip returned!");
+
+
+                let socket = SocketAddr::new(ip, *port);
+                Ok(to_ipv6_address(&socket))
             }
         }
     }
