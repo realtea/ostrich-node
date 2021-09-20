@@ -233,20 +233,20 @@ impl ProxyBuilder {
 
     pub async fn start(self, mut receiver: async_channel::Receiver<bool>) -> Result<()> {
         // let listener = TcpListener::bind(&self.addr).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
-        let addr: SocketAddr = self.addr.parse().expect("Unable to parse socket address");
-
-        let ipv6 = to_ipv6_address(&addr);
-        use socket2::{Domain, Socket, Type};
-        let socket = Socket::new(Domain::ipv6(), Type::stream(), None)?;
-        socket.set_only_v6(false)?;
-        socket.set_nonblocking(true)?;
-        // socket.set_read_timeout(Some(Duration::from_secs(60)))?;
-        // socket.set_write_timeout(Some(Duration::from_secs(60)))?;
-        // socket.set_linger(Some(Duration::from_secs(10)))?;
-        socket.set_keepalive(Some(Duration::from_secs(75)))?;
-        socket.bind(&ipv6.into())?;
-        socket.listen(128)?;
-        let listener = TcpListener::from(socket.into_tcp_listener());
+        // let addr: SocketAddr = self.addr.parse().expect("Unable to parse socket address");
+        //
+        // let ipv6 = to_ipv6_address(&addr);
+        // use socket2::{Domain, Socket, Type};
+        // let socket = Socket::new(Domain::ipv6(), Type::stream(), None)?;
+        // socket.set_only_v6(false)?;
+        // socket.set_nonblocking(true)?;
+        // // socket.set_read_timeout(Some(Duration::from_secs(60)))?;
+        // // socket.set_write_timeout(Some(Duration::from_secs(60)))?;
+        // // socket.set_linger(Some(Duration::from_secs(10)))?;
+        // // socket.set_keepalive(Some(Duration::from_secs(1800)))?;
+        // socket.bind(&ipv6.into())?;
+        // socket.listen(128)?;
+        // let listener = TcpListener::from(socket.into_tcp_listener());
 
         let resolver = Arc::new(
             resolver(config::ResolverConfig::cloudflare(), config::ResolverOpts::default())
@@ -254,7 +254,7 @@ impl ProxyBuilder {
                 .expect("failed to connect resolver")
         );
 
-        // let listener = TcpListener::bind(&self.addr).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+        let listener = TcpListener::bind(&self.addr).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
         info!("proxy started at: {}", self.addr);
 
         let certs = load_certs(self.cert.as_ref())?;
@@ -413,7 +413,7 @@ async fn redirect_fallback<#[cfg(feature = "wss")] S: AsyncRead + AsyncWrite + U
     debug!("connect to fallback: {}", target);
     tcp_stream.write_all(buf).await?;
 
-    let copy_future = tcp::CopyFuture::new(tls_stream, tcp_stream, Duration::from_secs(5));
+    let copy_future = tcp::CopyFuture::new(tls_stream, tcp_stream, Duration::from_secs(10));
 
     copy_future.await?;
 
@@ -534,7 +534,7 @@ async fn proxy(
                 TcpStream::connect(addr.to_string()).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
             debug!("connect to target: {} from source: {}", addr, source);
 
-            let copy_future = tcp::CopyFuture::new(tls_stream, tcp_stream, Duration::from_secs(10));
+            let copy_future = tcp::CopyFuture::new(tls_stream, tcp_stream, Duration::from_secs(30));
             copy_future.await?;
 
             // let s_t = format!("{}->{}", source, addr.to_string());
