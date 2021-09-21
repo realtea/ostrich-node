@@ -1,14 +1,14 @@
 #![allow(unreachable_code)]
-use crate::{load_certs, load_keys, tcp, to_ipv6_address, Address};
+use crate::{load_certs, load_keys, tcp, to_ipv6_address, Address, RELAY_BUFFER_SIZE};
 use async_std::{
     future::timeout,
     net::{TcpListener, TcpStream, UdpSocket},
-    task::sleep
+    task::sleep,task::spawn
 };
 use async_tls::{server::TlsStream, TlsAcceptor};
 use bytes::BufMut;
 use errors::{Error, Result};
-use smolscale::spawn;
+// use smolscale::spawn;
 // use futures_lite::io::copy;
 use async_std::sync::Mutex;
 use async_std_resolver::{config, resolver, AsyncStdResolver};
@@ -60,8 +60,8 @@ pub struct ProxyBuilder {
 
 async fn udp_downstream(udp_socket: Arc<UdpSocket>, udp_associate: Arc<Mutex<AssociationMap>>) -> Result<()> {
     // let mut buf = [0u8; RELAY_BUFFER_SIZE];
-    let mut buf: StackVec<u8, 2048> = StackVec::new();
-    buf.resize(2048, 0).map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
+    let mut buf: StackVec<u8, RELAY_BUFFER_SIZE> = StackVec::new();
+    buf.resize(RELAY_BUFFER_SIZE, 0).map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
 
     loop {
         // match timeout(std::time::Duration::from_secs(15), async {
@@ -79,32 +79,33 @@ async fn udp_downstream(udp_socket: Arc<UdpSocket>, udp_associate: Arc<Mutex<Ass
             break
         }
         let ipv6_dst = to_ipv6_address(&dst);
-        let mut is_err: bool = false;
         let mut udps = udp_associate.lock().await;
         if let Some(mut write_half) = udps.get_mut(&ipv6_dst) {
+            let mut is_err: bool = false;
             // error!("udp_downstream: associate get: {:?}",&ipv6_dst);
             let header = UdpAssociateHeader::new(&Address::from(dst), len);
             match header.write_to(&mut write_half).await {
                 Ok(_) => {}
                 Err(_) => {
                     is_err = true;
-                    write_half.flush().await?;
-                    write_half.close().await?;
                 }
             }
             match write_half.write_all(&buf[..len]).await {
                 Ok(_) => {}
                 Err(_) => {
                     is_err = true;
-                    write_half.flush().await?;
-                    write_half.close().await?;
                 }
             }
             debug!("udp_downstream: {} bytes", len);
+            if is_err{
+                write_half.flush().await?;
+                write_half.close().await?;
+                udps.remove(&ipv6_dst); // TODO remove Address::from
+            }
         }
-        if is_err {
-            udps.remove(&ipv6_dst); // TODO remove Address::from
-        }
+        // if is_err {
+        //     udps.remove(&ipv6_dst); // TODO remove Address::from
+        // }
         // }
         // Err(e) => {
         //     error!("reading client socket timeout:{:?}", e);
@@ -125,7 +126,7 @@ async fn udp_upstream<T>(
 where
     T: AsyncRead
 {
-    let mut buf: StackVec<u8, 2048> = StackVec::new();
+    let mut buf: StackVec<u8, RELAY_BUFFER_SIZE> = StackVec::new();
 
     loop {
         // error!("client_to_server never end");
@@ -139,7 +140,7 @@ where
         // tls_stream_reader.read_exact(&mut buf[..header.payload_len as usize]).await?;
 
         // let is_err:  bool = false;
-        match timeout(std::time::Duration::from_secs(7), async {
+        match timeout(std::time::Duration::from_secs(15), async {
             inbound.read_exact(&mut buf[..header.payload_len as usize]).await?;
             Ok(()) as Result<()>
         })
@@ -201,7 +202,7 @@ impl ProxyBuilder {
             udp_downstream(udp, downstream_associate).await?;
             Ok(()) as Result<()>
         })
-        .detach();
+        ;
 
         let assoc_map = udp_associate.clone();
         spawn(async move {
@@ -226,7 +227,7 @@ impl ProxyBuilder {
             }
             Ok(()) as Result<()>
         })
-        .detach();
+        ;
 
         Ok(Self { addr, key, cert, authenticator, fallback, udp_associate, udp_socket })
     }
@@ -249,7 +250,7 @@ impl ProxyBuilder {
         // let listener = TcpListener::from(socket.into_tcp_listener());
 
         let resolver = Arc::new(
-            resolver(config::ResolverConfig::cloudflare(), config::ResolverOpts::default())
+            resolver(config::ResolverConfig::google(), config::ResolverOpts::default())
                 .await
                 .expect("failed to connect resolver")
         );
@@ -280,7 +281,7 @@ impl ProxyBuilder {
                         self.udp_associate.clone(),
                         self.udp_socket.clone(),
                         resolver.clone()
-                    )).detach();
+                    ));
                     },
                 _ = receiver.next().fuse() =>{
                     let certs = load_certs(self.cert.as_ref())?;
@@ -534,7 +535,7 @@ async fn proxy(
                 TcpStream::connect(addr.to_string()).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
             debug!("connect to target: {} from source: {}", addr, source);
 
-            let copy_future = tcp::CopyFuture::new(tls_stream, tcp_stream, Duration::from_secs(30));
+            let copy_future = tcp::CopyFuture::new(tls_stream, tcp_stream, Duration::from_secs(60));
             copy_future.await?;
 
             // let s_t = format!("{}->{}", source, addr.to_string());
@@ -639,6 +640,7 @@ async fn proxy(
             };
             if let Some(mut tls_stream_writer) = cached {
                 // const RELAY_BUFFER_SIZE: usize = 0x4000;
+
                 // let outbound = UdpSocket::bind(SocketAddr::from(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0)))
                 //     .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
                 let outbound = UdpSocket::bind(SocketAddr::from(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0)))
@@ -648,7 +650,7 @@ async fn proxy(
 
                 let client_to_server = async {
                     // let mut buf = [0u8; RELAY_BUFFER_SIZE];
-                    let mut buf: StackVec<u8, 2048> = StackVec::new();
+                    let mut buf: StackVec<u8, RELAY_BUFFER_SIZE> = StackVec::new();
                     // buf.resize(RELAY_BUFFER_SIZE, 0);
 
                     loop {
@@ -662,7 +664,7 @@ async fn proxy(
 
                         // tls_stream_reader.read_exact(&mut buf[..header.payload_len as usize]).await?;
 
-                        match timeout(std::time::Duration::from_secs(5), async {
+                        match timeout(std::time::Duration::from_secs(15), async {
                             tls_stream_reader.read_exact(&mut buf[..header.payload_len as usize]).await?;
                             Ok(()) as Result<()>
                         })
@@ -693,8 +695,8 @@ async fn proxy(
                 };
                 let server_to_client = async {
                     // let mut buf = [0u8; RELAY_BUFFER_SIZE];
-                    let mut buf: StackVec<u8, 2048> = StackVec::new();
-                    buf.resize(2048, 0).map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
+                    let mut buf: StackVec<u8, RELAY_BUFFER_SIZE> = StackVec::new();
+                    buf.resize(RELAY_BUFFER_SIZE, 0).map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
 
                     loop {
                         // let (len, dst) = outbound.recv_from(&mut buf).await?;
@@ -745,12 +747,12 @@ async fn proxy(
                 let ret = match res {
                     Either::Left((Err(e), fut_right)) => {
                         debug!("udp copy to remote closed");
-                        // std::mem::drop(fut_right);
-                        let _ = timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
-                            fut_right.await?;
-                            Ok(()) as Result<()>
-                        })
-                        .await?;
+                        std::mem::drop(fut_right);
+                        // let _ = timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
+                        //     fut_right.await?;
+                        //     Ok(()) as Result<()>
+                        // })
+                        // .await?;
                         Err(anyhow::anyhow!("UdpAssociate copy local to remote error: {:?}", e))?
                     }
                     Either::Right((Err(e), fut_left)) => {

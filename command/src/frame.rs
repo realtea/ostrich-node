@@ -93,6 +93,7 @@ impl Frame {
 
         let check = CRC.checksum(data.as_ref());
         //        dbg!(sum == check);
+        println!("sum:{:?} check:{}",sum,check);
         if sum != check {
             return Err(anyhow::anyhow!("msg mismatch sum"))
         }

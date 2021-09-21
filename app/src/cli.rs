@@ -3,7 +3,7 @@ use app::DEFAULT_COMMAND_ADDR;
 use async_std::future::timeout;
 use async_std::{net::UdpSocket, task};
 use bytes::BytesMut;
-use clap::{FromArgMatches, IntoApp};
+use clap::{App, AppSettings, Arg, ArgMatches};
 use comfy_table::Table;
 use command::{build_cmd, frame::Frame, opt::Opt};
 use errors::{Error, Result};
@@ -11,12 +11,28 @@ use service::http::handler::{ResponseBody, ResponseEntity};
 use std::time::Duration;
 
 fn main() -> Result<()> {
-    let matches = Opt::into_app().get_matches();
+    // let matches = Opt::into_app().get_matches();
+    let matches = App::new("Ostrich")
+        .version("0.1")
+        .author("ostrich")
+        .subcommand(
+            App::new("create")
+                .about("create command")
+                .subcommand(
+                    App::new("user")
+                        .about("create a new user")
+                        .arg(Arg::new("username").about("The username to create").required(true)),
+                )
+        )
+        .get_matches();
 
     task::block_on(async {
         let socket = UdpSocket::bind("127.0.0.1:0").await?;
         let mut data = BytesMut::default();
-        build_cmd(Opt::from_arg_matches(&matches).unwrap(), &mut data).await?;
+        build_cmd( matches,&mut data).await?;
+
+        println!("data len: {}",data.len());
+
         let _ = timeout(Duration::from_secs(60), socket.send_to(data.as_ref(), DEFAULT_COMMAND_ADDR))
             .await
             .map_err(|e| Error::Eor(anyhow::anyhow!("{}", e)))?;

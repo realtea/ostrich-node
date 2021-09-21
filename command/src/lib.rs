@@ -5,28 +5,39 @@ use crate::opt::UserCommand;
 use bytes::BytesMut;
 use dotenv::dotenv;
 use frame::Frame;
-use opt::{Command, Opt};
+use clap::ArgMatches;
 
 // pub async fn build_cmd(mut data:  &mut BytesMut) -> anyhow::Result<()> {
 //     pack_msg_frame()
 // Ok(())
 // }
-pub async fn build_cmd<'a>(opt: Opt, data: &mut BytesMut) -> anyhow::Result<()> {
-    dotenv().ok();
-    match opt.command {
-        Command::User(user) => {
-            match user.command {
-                UserCommand::Create(user) => {
-                    let frame = Frame::CreateUserRequest.pack_msg_frame(user.name.as_bytes());
+pub async fn build_cmd<'a>(args: ArgMatches, data: &mut BytesMut) -> anyhow::Result<()> {
+
+    match args.subcommand() {
+        Some(("create", create_matches)) => {
+            // Now we have a reference to clone's matches
+            match create_matches.subcommand() {
+                None => {}
+                Some(("user",user_matches)) => {
+                    let username = user_matches.value_of("username").expect("username was empty");
+                    println!("username you wanna create: {:?}",&username);
+                    let frame = Frame::CreateUserRequest.pack_msg_frame(username.as_bytes());
+                    Frame::unpack_msg_frame(&mut BytesMut::from(frame.as_ref()))?;
                     data.reserve(frame.len());
                     data.extend_from_slice(frame.as_ref());
-                    // data.extend_into(&mut user.name.into_bytes());
-                    // data.put(user.name.as_bytes());
                 }
-                _ => {}
+                _ => {unreachable!()}
             }
         }
-    };
+        None => println!("No subcommand was used"), // If no subcommand was used it'll match the tuple ("", None)
+        _ => {unreachable!()}
+    }
+
+
+
+                    // data.extend_into(&mut user.name.into_bytes());
+                    // data.put(user.name.as_bytes());
+
 
     Ok(())
 }

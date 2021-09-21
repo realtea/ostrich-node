@@ -31,6 +31,8 @@ use std::{
     sync::Arc
 };
 
+pub const RELAY_BUFFER_SIZE: usize = 2048;
+
 pub fn load_certs(path: &Path) -> Result<Vec<Certificate>> {
     certs(&mut BufReader::new(File::open(path)?)).map_err(|_| Error::Eor(anyhow!("could not find carts")))
 }
