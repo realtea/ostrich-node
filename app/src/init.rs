@@ -3,7 +3,10 @@
 use crate::{build_cmd_response, create_cmd_user, DEFAULT_COMMAND_ADDR, DEFAULT_REGISTER_PORT};
 use acmed::{config::Config as AcmeConfig, errors::Context, sandbox};
 use async_process::Command;
-use async_std::{net::UdpSocket, task::sleep,task::spawn};
+use async_std::{
+    net::UdpSocket,
+    task::{sleep, spawn}
+};
 use bytes::BytesMut;
 use command::frame::Frame;
 use errors::{Error, Result};
@@ -107,8 +110,7 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
             }
         }
         Ok(()) as Result<()>
-    })
-    ;
+    });
 
     // spawn(async move {
     //     loop {
@@ -129,8 +131,7 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
         serve_register(socket.as_str(), state).await?;
         Ok(()) as Result<()>
         // });
-    })
-    ;
+    });
     spawn(async move {
         loop {
             sleep(Duration::from_secs(5 * 60 + 11)).await;
@@ -152,8 +153,7 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
             drop(nodes);
         }
         Ok(()) as Result<()>
-    })
-    ;
+    });
 
     spawn(async move {
         let socket = UdpSocket::bind(DEFAULT_COMMAND_ADDR).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
@@ -166,7 +166,7 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
             // data.clear();
             // buf.clear();
             let (n, peer) = socket.recv_from(&mut buf).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
-            info!("CreateUserRequest received bytes: {}",n);
+            info!("CreateUserRequest received bytes: {}", n);
             data.extend_from_slice(&buf[..n]);
 
             match Frame::get_frame_type(&data.as_ref()) {
@@ -251,7 +251,6 @@ pub async fn acmed_service(acmed_config: &AcmeConfig, sender: async_channel::Sen
             }
         }
         Ok(()) as Result<()>
-    })
-    ;
+    });
     Ok(()) as Result<()>
 }

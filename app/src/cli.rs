@@ -3,9 +3,9 @@ use app::DEFAULT_COMMAND_ADDR;
 use async_std::future::timeout;
 use async_std::{net::UdpSocket, task};
 use bytes::BytesMut;
-use clap::{App, AppSettings, Arg, ArgMatches};
+use clap::{App,  Arg};
 use comfy_table::Table;
-use command::{build_cmd, frame::Frame, opt::Opt};
+use command::{build_cmd, frame::Frame};
 use errors::{Error, Result};
 use service::http::handler::{ResponseBody, ResponseEntity};
 use std::time::Duration;
@@ -16,22 +16,20 @@ fn main() -> Result<()> {
         .version("0.1")
         .author("ostrich")
         .subcommand(
-            App::new("create")
-                .about("create command")
-                .subcommand(
-                    App::new("user")
-                        .about("create a new user")
-                        .arg(Arg::new("username").about("The username to create").required(true)),
-                )
+            App::new("create").about("create command").subcommand(
+                App::new("user")
+                    .about("create a new user")
+                    .arg(Arg::new("username").about("The username to create").required(true))
+            )
         )
         .get_matches();
 
     task::block_on(async {
         let socket = UdpSocket::bind("127.0.0.1:0").await?;
         let mut data = BytesMut::default();
-        build_cmd( matches,&mut data).await?;
+        build_cmd(matches, &mut data).await?;
 
-        println!("data len: {}",data.len());
+        println!("data len: {}", data.len());
 
         let _ = timeout(Duration::from_secs(60), socket.send_to(data.as_ref(), DEFAULT_COMMAND_ADDR))
             .await

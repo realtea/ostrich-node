@@ -3,7 +3,7 @@ use crate::{load_certs, load_keys, tcp, to_ipv6_address, Address, RELAY_BUFFER_S
 use async_std::{
     future::timeout,
     net::{TcpListener, TcpStream, UdpSocket},
-    task::sleep,task::spawn
+    task::{sleep, spawn}
 };
 use async_tls::{server::TlsStream, TlsAcceptor};
 use bytes::BufMut;
@@ -97,7 +97,7 @@ async fn udp_downstream(udp_socket: Arc<UdpSocket>, udp_associate: Arc<Mutex<Ass
                 }
             }
             debug!("udp_downstream: {} bytes", len);
-            if is_err{
+            if is_err {
                 write_half.flush().await?;
                 write_half.close().await?;
                 udps.remove(&ipv6_dst); // TODO remove Address::from
@@ -120,8 +120,7 @@ async fn udp_downstream(udp_socket: Arc<UdpSocket>, udp_associate: Arc<Mutex<Ass
 
 async fn udp_upstream<T>(
     mut inbound: ReadHalf<T>,
-    outbound: Arc<UdpSocket>
-    // udp_associate: Arc<Mutex<AssociationMap>> // ,ipv6_dst: &SocketAddrV6
+    outbound: Arc<UdpSocket> // udp_associate: Arc<Mutex<AssociationMap>> // ,ipv6_dst: &SocketAddrV6
 ) -> Result<()>
 where
     T: AsyncRead
@@ -201,8 +200,7 @@ impl ProxyBuilder {
         spawn(async move {
             udp_downstream(udp, downstream_associate).await?;
             Ok(()) as Result<()>
-        })
-        ;
+        });
 
         let assoc_map = udp_associate.clone();
         spawn(async move {
@@ -226,8 +224,7 @@ impl ProxyBuilder {
                 // }
             }
             Ok(()) as Result<()>
-        })
-        ;
+        });
 
         Ok(Self { addr, key, cert, authenticator, fallback, udp_associate, udp_socket })
     }
@@ -250,6 +247,7 @@ impl ProxyBuilder {
         // let listener = TcpListener::from(socket.into_tcp_listener());
 
         let resolver = Arc::new(
+            // for cloudflare dns, there is an issue: error notifying wait, possible future leak: TrySendError
             resolver(config::ResolverConfig::google(), config::ResolverOpts::default())
                 .await
                 .expect("failed to connect resolver")
@@ -696,7 +694,8 @@ async fn proxy(
                 let server_to_client = async {
                     // let mut buf = [0u8; RELAY_BUFFER_SIZE];
                     let mut buf: StackVec<u8, RELAY_BUFFER_SIZE> = StackVec::new();
-                    buf.resize(RELAY_BUFFER_SIZE, 0).map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
+                    buf.resize(RELAY_BUFFER_SIZE, 0)
+                        .map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
 
                     loop {
                         // let (len, dst) = outbound.recv_from(&mut buf).await?;

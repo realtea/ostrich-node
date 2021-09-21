@@ -23,7 +23,6 @@ num_cpus = "1.0"
 socket2 = { version = "0.3.18", features = ["unix", "reuseport"] }
 sqlx = { version = "0.5" }
 hyper = { version = "0.13.9", default-features = false }
-dotenv = "0.15"
 byteorder = "1.4.3"
 crc = "2.0.0"
 comfy-table = "3.0.0"

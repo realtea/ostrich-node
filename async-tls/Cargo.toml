@@ -32,12 +32,12 @@ server = []
 lazy_static = "1"
 futures-executor = "0.3.5"
 futures-util = { version = "0.3.5", features = ["io"] }
-async-std = { version = "1.0", features = ["unstable"] }
+async-std = "1.9.0"
 
-[[test]]
-name = "test"
-required-features = ["client", "server"]
-
-[[test]]
-name = "google"
-required-features = ["client"]
+#[[test]]
+#name = "test"
+#required-features = ["client", "server"]
+#
+#[[test]]
+#name = "google"
+#required-features = ["client"]
