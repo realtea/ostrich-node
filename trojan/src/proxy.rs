@@ -613,8 +613,17 @@ async fn proxy(
         CMD_UDP_ASSOCIATE => {
             debug!("UdpAssociate target addr: {:?}", addr);
 
-            let (mut tls_stream_reader, tls_stream_writer) = tls_stream.split();
-            let ipv6_addr = addr.to_ipv6(&resolver).await?;
+            let (mut tls_stream_reader, mut tls_stream_writer) = tls_stream.split();
+            // let ipv6_addr = addr.to_ipv6(&resolver).await?;
+
+           let  ipv6_addr = match addr.to_ipv6(&resolver).await{
+                Ok(a) => a,
+                Err(e) => {
+                    tls_stream_writer.close().await?;
+                    return  Err(e)
+                }
+            };
+
             let cached = {
                 // let ipv6_addr = addr.to_ipv6(&resolver).await?;
                 debug!("loop ipv6: {:?}", ipv6_addr);

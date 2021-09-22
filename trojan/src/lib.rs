@@ -209,15 +209,13 @@ impl Address {
                     .lookup_ip(addr)
                     .await
                     .map_err(|e| {
-                        log::error!("loop ip domain: {},error: {:?}", addr, e);
-                        e
-                    })
-                    .expect("cant loop up domain name");
+                        Error::Eor(anyhow::anyhow!("loop ip domain: {},error: {:?}", &addr, e))
+
+                    })?;
 
                 // There can be many addresses associated with the name,
                 //  this can return IPv4 and/or IPv6 addresses
-                let ip = response.iter().next().expect("no ip returned!");
-
+                let ip = response.iter().next().ok_or(Error::Eor(anyhow::anyhow!("cant lookup domain: {}",&addr)))?;
 
                 let socket = SocketAddr::new(ip, *port);
                 Ok(to_ipv6_address(&socket))
