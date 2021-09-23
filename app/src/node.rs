@@ -70,8 +70,9 @@ fn main() -> Result<()> {
         )
         .await?;
         let _ = Command::new("nginx").arg("-s").arg("stop").status().await?;
-        let _ = Command::new("systemctl").arg("stop").arg("nginx").status().await?;
-        let _ = Command::new("killall").arg("-e").arg("nginx").status().await?;
+        // let _ = Command::new("systemctl").arg("stop").arg("nginx").status().await;
+        // let _ = Command::new("killall").arg("-e").arg("nginx").status().await;
+        sleep(Duration::from_secs(1)).await;
 
         let _ = Command::new("nginx").arg("-c").arg("/etc/ostrich/conf/nginx.conf").status().await?;
 
@@ -95,7 +96,8 @@ fn main() -> Result<()> {
             }
         }
 
-        let _ = Command::new("killall").arg("-e").arg("nginx").status().await?;
+        let _ = Command::new("nginx").arg("-s").arg("stop").status().await?;
+        sleep(Duration::from_secs(1)).await;
         let _ = Command::new("systemctl").arg("start").arg("nginx").status().await?;
         acmed_service(&acmed_config, sender).await?;
 

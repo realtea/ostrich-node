@@ -22,7 +22,7 @@ use service::{
     http::tide::serve_register
 };
 // use smolscale::spawn;
-use std::{env, fs, ops::Sub, os::unix::process::ExitStatusExt, sync::Arc, time::Duration};
+use std::{env, fs, ops::Sub, sync::Arc, time::Duration};
 use trojan::config::Config;
 
 pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<()> {
@@ -236,9 +236,10 @@ pub async fn acmed_service(acmed_config: &AcmeConfig, sender: async_channel::Sen
             }
             if reload {
                 let p = Command::new("nginx").arg("-s").arg("reload").status().await?;
-                if p.signal().is_some() {
+                if !p.success() {
                     error!("failed to reload nginx service");
-                    std::process::exit(1)
+                    continue
+                    // std::process::exit(1)
                 }
                 sleep(Duration::from_secs(7)).await;
 

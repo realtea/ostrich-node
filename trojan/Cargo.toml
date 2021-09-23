@@ -17,7 +17,7 @@ async-trait = "0.1.41"
 event-listener = "2.5.1"
 errors = {path = "../errors"}
 async-tls = {path = "../async-tls"}
-async-std = "1.9.0"
+async-std = {version = "1.10.0",default-features = false, features = ["tokio1"]}
 anyhow = "1.0.38"
 bytes = "1.0.0"
 rustls = "0.19.1"

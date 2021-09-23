@@ -115,7 +115,7 @@ cat > /etc/nginx/nginx.conf <<-EOF
 user  root;
 worker_processes  1;
 error_log  /var/log/nginx/error.log warn;
-pid        /var/run/nginx.pid;
+#pid        /var/run/nginx.pid;
 events {
     worker_connections  1024;
 }
@@ -235,7 +235,7 @@ cat > /etc/ostrich/conf/nginx.conf <<-EOF
 user  root;
 worker_processes  1;
 error_log  /var/log/nginx/error.log warn;
-pid        /var/run/nginx.pid;
+#pid        /var/run/nginx.pid;
 events {
     worker_connections  1024;
 }

@@ -23,10 +23,11 @@ use rustls::{NoClientAuth, ServerConfig};
 use std::{
     io,
     net::{Ipv6Addr, SocketAddr, SocketAddrV6},
+    str::FromStr,
     sync::Arc,
     time::Duration
 };
-
+use socket2::{Domain, Socket, Type, SockAddr};
 
 cfg_if::cfg_if! {
     if #[cfg(wss)] {
@@ -232,19 +233,23 @@ impl ProxyBuilder {
     pub async fn start(self, mut receiver: async_channel::Receiver<bool>) -> Result<()> {
         // let listener = TcpListener::bind(&self.addr).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
         // let addr: SocketAddr = self.addr.parse().expect("Unable to parse socket address");
-        //
-        // let ipv6 = to_ipv6_address(&addr);
-        // use socket2::{Domain, Socket, Type};
-        // let socket = Socket::new(Domain::ipv6(), Type::stream(), None)?;
-        // socket.set_only_v6(false)?;
-        // socket.set_nonblocking(true)?;
-        // // socket.set_read_timeout(Some(Duration::from_secs(60)))?;
-        // // socket.set_write_timeout(Some(Duration::from_secs(60)))?;
-        // // socket.set_linger(Some(Duration::from_secs(10)))?;
-        // // socket.set_keepalive(Some(Duration::from_secs(1800)))?;
-        // socket.bind(&ipv6.into())?;
-        // socket.listen(128)?;
-        // let listener = TcpListener::from(socket.into_tcp_listener());
+        let addr = SocketAddr::from_str(self.addr.as_ref())
+            .map_err(|e| anyhow::anyhow!("unable to convert string ip:port to SocketAddr: {:?}", e))?;
+
+        let ipv6 = to_ipv6_address(&addr);
+        let socket = Socket::new(Domain::ipv6(), Type::stream(), None)?;
+        socket.set_only_v6(false)?;
+        socket.set_nonblocking(true)?;
+        // socket.set_read_timeout(Some(Duration::from_secs(60)))?;
+        // socket.set_write_timeout(Some(Duration::from_secs(60)))?;
+        // socket.set_linger(Some(Duration::from_secs(10)))?;
+        socket.set_keepalive(Some(Duration::from_secs(60 * 15)))?;
+        socket.bind(&ipv6.into())?;
+        socket.listen(128)?;
+        let listener = TcpListener::from(socket.into_tcp_listener());
+
+        // let listener = TcpListener::bind(&self.addr).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+        // info!("proxy started at: {}", self.addr);
 
         let resolver = Arc::new(
             // for cloudflare dns, there is an issue: error notifying wait, possible future leak: TrySendError
@@ -252,9 +257,6 @@ impl ProxyBuilder {
                 .await
                 .expect("failed to connect resolver")
         );
-
-        let listener = TcpListener::bind(&self.addr).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
-        info!("proxy started at: {}", self.addr);
 
         let certs = load_certs(self.cert.as_ref())?;
         let key = load_keys(self.key.as_ref())?;
@@ -528,12 +530,29 @@ async fn proxy(
     match cmd_buf[0] {
         CMD_TCP_CONNECT => {
             debug!("TcpConnect target addr: {:?}", addr);
+            error!("before {:?}", &addr);
+            let socket_addr = addr.to_socket_addr(&resolver).await?;
 
-            let tcp_stream =
-                TcpStream::connect(addr.to_string()).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+            let domain_type = if socket_addr.is_ipv4() {
+                Domain::ipv4()
+            } else {
+                Domain::ipv6()
+            };
+
+            let socket = Socket::new(domain_type, Type::stream(), None)?;
+            // socket.set_read_timeout(Some(Duration::from_secs(60)))?;
+            // socket.set_write_timeout(Some(Duration::from_secs(60)))?;
+            // socket.set_linger(Some(Duration::from_secs(10)))?;
+            socket.set_keepalive(Some(Duration::from_secs(60 * 5)))?;
+            socket.connect_timeout(&SockAddr::from(socket_addr), Duration::from_secs(10))?;
+            socket.set_nonblocking(true)?;
+            let tcp_stream = TcpStream::from(socket.into_tcp_stream());
+            error!("after {:?}", &socket_addr);
+            // let tcp_stream =
+            //     TcpStream::connect(addr.to_string()).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
             debug!("connect to target: {} from source: {}", addr, source);
 
-            let copy_future = tcp::CopyFuture::new(tls_stream, tcp_stream, Duration::from_secs(60));
+            let copy_future = tcp::CopyFuture::new(tls_stream, tcp_stream, Duration::from_secs(10));
             copy_future.await?;
 
             // let s_t = format!("{}->{}", source, addr.to_string());
@@ -616,11 +635,11 @@ async fn proxy(
             let (mut tls_stream_reader, mut tls_stream_writer) = tls_stream.split();
             // let ipv6_addr = addr.to_ipv6(&resolver).await?;
 
-           let  ipv6_addr = match addr.to_ipv6(&resolver).await{
+            let ipv6_addr = match addr.to_ipv6(&resolver).await {
                 Ok(a) => a,
                 Err(e) => {
                     tls_stream_writer.close().await?;
-                    return  Err(e)
+                    return Err(e)
                 }
             };
 

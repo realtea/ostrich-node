@@ -179,13 +179,13 @@ impl Address {
         }
     }
 
-    pub fn to_socket_addr(self) -> Option<SocketAddr> {
-        let addr = match self {
-            Address::SocketAddress(addr) => Some(addr),
-            Address::DomainNameAddress(_, _) => None
-        };
-        addr
-    }
+    // pub fn to_socket_addr(self) -> Option<SocketAddr> {
+    //     let addr = match self {
+    //         Address::SocketAddress(addr) => Some(addr),
+    //         Address::DomainNameAddress(_, _) => None
+    //     };
+    //     addr
+    // }
 
     pub fn is_ipv4_unspecified(&self) -> bool {
         match self {
@@ -208,17 +208,34 @@ impl Address {
                 let response = resolver
                     .lookup_ip(addr)
                     .await
-                    .map_err(|e| {
-                        Error::Eor(anyhow::anyhow!("loop ip domain: {},error: {:?}", &addr, e))
-
-                    })?;
+                    .map_err(|e| Error::Eor(anyhow::anyhow!("loop ip domain: {},error: {:?}", &addr, e)))?;
 
                 // There can be many addresses associated with the name,
                 //  this can return IPv4 and/or IPv6 addresses
-                let ip = response.iter().next().ok_or(Error::Eor(anyhow::anyhow!("cant lookup domain: {}",&addr)))?;
+                let ip = response.iter().next().ok_or(Error::Eor(anyhow::anyhow!("cant lookup domain: {}", &addr)))?;
 
                 let socket = SocketAddr::new(ip, *port);
                 Ok(to_ipv6_address(&socket))
+            }
+        }
+    }
+
+    pub async fn to_socket_addr(&self, resolver: &Arc<AsyncStdResolver>) -> Result<SocketAddr> {
+        match self {
+            Address::SocketAddress(addr) => Ok(*addr),
+
+            Address::DomainNameAddress(ref addr, ref port) => {
+                let response = resolver
+                    .lookup_ip(addr)
+                    .await
+                    .map_err(|e| Error::Eor(anyhow::anyhow!("loop ip domain: {},error: {:?}", &addr, e)))?;
+
+                // There can be many addresses associated with the name,
+                //  this can return IPv4 and/or IPv6 addresses
+                let ip = response.iter().next().ok_or(Error::Eor(anyhow::anyhow!("cant lookup domain: {}", &addr)))?;
+
+                let socket = SocketAddr::new(ip, *port);
+                Ok(socket)
             }
         }
     }
