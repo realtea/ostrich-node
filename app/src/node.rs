@@ -11,7 +11,6 @@ use log::{error, info};
 // use smolscale::block_on;
 use std::{fs, path::Path, time::Duration};
 use trojan::{config::set_config, generate_authenticator, ProxyBuilder};
-
 // use mimalloc::MiMalloc;
 //
 // #[global_allocator]
@@ -70,9 +69,9 @@ fn main() -> Result<()> {
         )
         .await?;
         let _ = Command::new("nginx").arg("-s").arg("stop").status().await?;
-        // let _ = Command::new("systemctl").arg("stop").arg("nginx").status().await;
-        // let _ = Command::new("killall").arg("-e").arg("nginx").status().await;
-        sleep(Duration::from_secs(1)).await;
+        let _ = Command::new("systemctl").arg("stop").arg("nginx").status().await;
+        let _ = Command::new("killall").arg("-e").arg("nginx").status().await;
+        // sleep(Duration::from_secs(1)).await;
 
         let _ = Command::new("nginx").arg("-c").arg("/etc/ostrich/conf/nginx.conf").status().await?;
 

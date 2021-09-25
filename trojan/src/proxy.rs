@@ -18,8 +18,9 @@ use futures_util::{
 };
 use heapless::Vec as StackVec;
 use log::{debug, error, info};
-use lru_time_cache::LruCache;
-use rustls::{NoClientAuth, ServerConfig};
+use lru_time_cache::{LruCache, TimedEntry};
+use rustls::{NoClientAuth, ServerConfig, Session};
+use socket2::{Domain, SockAddr, Socket, Type};
 use std::{
     io,
     net::{Ipv6Addr, SocketAddr, SocketAddrV6},
@@ -27,7 +28,6 @@ use std::{
     sync::Arc,
     time::Duration
 };
-use socket2::{Domain, Socket, Type, SockAddr};
 
 cfg_if::cfg_if! {
     if #[cfg(wss)] {
@@ -140,7 +140,7 @@ where
         // tls_stream_reader.read_exact(&mut buf[..header.payload_len as usize]).await?;
 
         // let is_err:  bool = false;
-        match timeout(std::time::Duration::from_secs(15), async {
+        match timeout(std::time::Duration::from_secs(60), async {
             inbound.read_exact(&mut buf[..header.payload_len as usize]).await?;
             Ok(()) as Result<()>
         })
@@ -208,21 +208,23 @@ impl ProxyBuilder {
             loop {
                 sleep(time_to_live).await;
                 // cleanup expired associations. iter() will remove expired elements
-                let _ = assoc_map.lock().await.iter();
+                // let _ = assoc_map.lock().await.iter();
 
-                // let mut expired = assoc_map.lock().await.notify_iter()
-                //     .map(|entry| match entry {
-                //         TimedEntry::Expired(_key, value) => Some(value),
-                //         _ => None,
-                //     })
-                //     .collect::<Vec<_>>();
-                // for mut w in expired.iter_mut(){
-                //     if w.is_some(){
-                //         error!("close expired writer");
-                //         let mut w = w.borrow_mut().expect("writer is none");
-                //         w.close().await?;
-                //     }
-                // }
+                let mut expired = assoc_map.lock().await.notify_iter()
+                    .map(|entry| match entry {
+                        TimedEntry::Expired(key, value) => Some((key,value)),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                for  w in expired.iter_mut(){
+                    if w.is_some(){
+                        error!("starting to close expired writer ");
+                        let  ww = w.as_mut().unwrap();
+                        ww.1.flush().await?;
+                        ww.1.close().await?;
+                        error!("closed expired writer: {:?}",ww.0);
+                    }
+                }
             }
             Ok(()) as Result<()>
         });
@@ -240,10 +242,10 @@ impl ProxyBuilder {
         let socket = Socket::new(Domain::ipv6(), Type::stream(), None)?;
         socket.set_only_v6(false)?;
         socket.set_nonblocking(true)?;
-        // socket.set_read_timeout(Some(Duration::from_secs(60)))?;
-        // socket.set_write_timeout(Some(Duration::from_secs(60)))?;
+        socket.set_read_timeout(Some(Duration::from_secs(60)))?;
+        socket.set_write_timeout(Some(Duration::from_secs(60)))?;
         // socket.set_linger(Some(Duration::from_secs(10)))?;
-        socket.set_keepalive(Some(Duration::from_secs(60 * 15)))?;
+        // socket.set_keepalive(Some(Duration::from_secs(60 )))?;
         socket.bind(&ipv6.into())?;
         socket.listen(128)?;
         let listener = TcpListener::from(socket.into_tcp_listener());
@@ -301,15 +303,27 @@ impl ProxyBuilder {
 // async fn process_stream(
 //     acceptor: Arc<TlsAcceptor>, raw_stream: TcpStream, authenticator: Arc<Vec<String>>, fallback: String
 // )
+const DEFAULT_BUFFER_SIZE: usize = 2 * 4096;
+
 async fn process_stream(
     acceptor: TlsAcceptor, raw_stream: TcpStream, authenticator: Vec<String>, fallback: String,
     udp_associate: SharedAssociationMap, udp_socket: Arc<UdpSocket>, resolver: Arc<AsyncStdResolver>
-) {
+) -> Result<()> {
     let source = raw_stream.peer_addr().map(|addr| addr.to_string()).unwrap_or_else(|_| "".to_owned());
 
     debug!("new connection from {}", source);
 
-    let handshake = acceptor.accept(raw_stream).await;
+    // let handshake = acceptor.accept(raw_stream).await;
+
+    let  handshake = timeout(
+        Duration::from_secs(5),
+        acceptor.accept_with(raw_stream, |s| {
+            s.set_buffer_limit(DEFAULT_BUFFER_SIZE);
+        })
+    )
+    .await?
+    .map_err(|e| Error::Eor(anyhow::anyhow!("tls handshake within 5 secs: {:?}", e)));
+
     let udp_associate = udp_associate.clone();
 
     match handshake {
@@ -320,13 +334,20 @@ async fn process_stream(
             ));
 
             debug!("handshake success from: {}", source);
-            if let Err(err) =
-                proxy(inner_stream, source.clone(), authenticator, fallback, udp_associate, udp_socket, resolver).await
+            match proxy(inner_stream, source.clone(), authenticator, fallback, udp_associate, udp_socket, resolver)
+                .await
             {
-                error!("error processing tls: {:?} from source: {}", err, source);
+                Ok(_) => Ok(()),
+                Err(err) => {
+                    error!("error processing tls: {:?} from source: {}", err, source);
+                    Err(err)
+                }
             }
         }
-        Err(err) => error!("error handshaking: {:?} from source: {}", err, source)
+        Err(err) => {
+            error!("error handshaking: {:?} from source: {}", err, source);
+            Err(err)
+        }
     }
 }
 const HASH_STR_LEN: usize = 56;
@@ -530,7 +551,7 @@ async fn proxy(
     match cmd_buf[0] {
         CMD_TCP_CONNECT => {
             debug!("TcpConnect target addr: {:?}", addr);
-            error!("before {:?}", &addr);
+            // error!("before {:?}", &addr);
             let socket_addr = addr.to_socket_addr(&resolver).await?;
 
             let domain_type = if socket_addr.is_ipv4() {
@@ -540,20 +561,23 @@ async fn proxy(
             };
 
             let socket = Socket::new(domain_type, Type::stream(), None)?;
-            // socket.set_read_timeout(Some(Duration::from_secs(60)))?;
-            // socket.set_write_timeout(Some(Duration::from_secs(60)))?;
+            socket.set_read_timeout(Some(Duration::from_secs(60)))?;
+            socket.set_write_timeout(Some(Duration::from_secs(60)))?;
             // socket.set_linger(Some(Duration::from_secs(10)))?;
-            socket.set_keepalive(Some(Duration::from_secs(60 * 5)))?;
-            socket.connect_timeout(&SockAddr::from(socket_addr), Duration::from_secs(10))?;
+            // socket.set_keepalive(Some(Duration::from_secs(60 )))?;
+            socket.connect_timeout(&SockAddr::from(socket_addr), Duration::from_secs(15))?;
             socket.set_nonblocking(true)?;
             let tcp_stream = TcpStream::from(socket.into_tcp_stream());
-            error!("after {:?}", &socket_addr);
+            // error!("after {:?}", &socket_addr);
             // let tcp_stream =
             //     TcpStream::connect(addr.to_string()).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
             debug!("connect to target: {} from source: {}", addr, source);
 
-            let copy_future = tcp::CopyFuture::new(tls_stream, tcp_stream, Duration::from_secs(10));
-            copy_future.await?;
+            let copy_future = tcp::CopyFuture::new(tls_stream, tcp_stream, Duration::from_secs(60));
+            copy_future.await.map_err(|e| {
+
+                e
+            })?;
 
             // let s_t = format!("{}->{}", source, addr.to_string());
             // let t_s = format!("{}->{}", addr.to_string(), source);
@@ -681,27 +705,33 @@ async fn proxy(
 
                     loop {
                         // error!("client_to_server never end");
-                        let header = UdpAssociateHeader::read_from(&mut tls_stream_reader).await?;
-                        if header.payload_len == 0 {
-                            break
-                        }
-                        buf.resize(header.payload_len as usize, 0)
-                            .map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
+                        // let header = UdpAssociateHeader::read_from(&mut tls_stream_reader).await?;
+                        // if header.payload_len == 0 {
+                        //     break
+                        // }
+                        // buf.resize(header.payload_len as usize, 0)
+                        //     .map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
 
                         // tls_stream_reader.read_exact(&mut buf[..header.payload_len as usize]).await?;
 
-                        match timeout(std::time::Duration::from_secs(15), async {
+                       let header =  match timeout(std::time::Duration::from_secs(60), async {
+                            let header = UdpAssociateHeader::read_from(&mut tls_stream_reader).await?;
+                            if header.payload_len == 0 {
+                                return Err(anyhow::anyhow!("udp associate header reading timeout"))
+                            }
+                            buf.resize(header.payload_len as usize, 0)
+                                .map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
                             tls_stream_reader.read_exact(&mut buf[..header.payload_len as usize]).await?;
-                            Ok(()) as Result<()>
+                            Ok(header)
                         })
                         .await
                         {
-                            Ok(_) => {}
+                            Ok(header) => {header?}
                             Err(e) => {
                                 error!("reading client socket timeout:{:?}", e);
                                 break
                             }
-                        }
+                        };
 
                         match outbound.send_to(&buf[..header.payload_len as usize], header.addr.to_string()).await {
                             Ok(n) => {
@@ -736,7 +766,7 @@ async fn proxy(
                         // tls_stream_writer.write_all(&buf[..len]).await?;
                         // debug!("udp copy to client: {} bytes", len);
 
-                        match timeout(std::time::Duration::from_secs(15), async {
+                        match timeout(std::time::Duration::from_secs(60), async {
                             let (len, dst) = outbound.recv_from(&mut buf).await?;
                             // if len == 0 {
                             //     break
@@ -774,7 +804,8 @@ async fn proxy(
                 let ret = match res {
                     Either::Left((Err(e), fut_right)) => {
                         debug!("udp copy to remote closed");
-                        std::mem::drop(fut_right);
+                        fut_right.await?;
+                        // std::mem::drop(fut_right);
                         // let _ = timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
                         //     fut_right.await?;
                         //     Ok(()) as Result<()>
@@ -793,11 +824,12 @@ async fn proxy(
                         Err(anyhow::anyhow!("UdpAssociate copy remote to local error: {:?}", e))?
                     }
                     Either::Left((Ok(_), fut_right)) => {
-                        timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
-                            fut_right.await?;
-                            Ok(()) as Result<()>
-                        })
-                        .await?
+                        fut_right.await
+                        // timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
+                        //     fut_right.await?;
+                        //     Ok(()) as Result<()>
+                        // })
+                        // .await?
                     }
                     Either::Right((Ok(_), fut_left)) => {
                         timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
@@ -824,6 +856,7 @@ async fn proxy(
             }
         }
         _ => {
+            tls_stream.close().await?;
             error!("cant decode incoming stream");
             // Err(Error::Eor(anyhow::anyhow!("invalid command")))
         }

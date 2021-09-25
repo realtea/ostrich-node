@@ -14,7 +14,7 @@ trust-dns-resolver = { version = "0.20"  }
 hyper = { version = "0.13.9", default-features = false }
 log = "0.4.14"
 sqlx = { version = "0.5" }
-async-std = {version = "1.10.0",default-features = false, features = ["tokio1"]}
+async-std = {version = "1.10.0",default-features = false,features = ["tokio1"]}
 serde_json = "1.0.66"
 [features]
 default= ["sqlite"]

@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 #rusqlite = {version = "0.25.1",features = ["bundled"]}
 sqlx = { version = "0.5" }
-async-std = {version = "1.10.0",default-features = false, features = ["tokio1"]}
+async-std = {version = "1.10.0",default-features = false,features = ["tokio1"]}
 #hyper = { version = "0.14", features = ["full"] }
 #tokio = { version = "1" }
 tide = "0.16.0"
