@@ -1,3 +1,4 @@
+cargo-features = ["strip"]
 [workspace]
 members = [
 "app",
@@ -9,16 +10,16 @@ members = [
 "acmed",
 "runtime"
 ]
+cargo-features = ["strip"]
+
+
+
 [profile.release]
-opt-level = 3
-debug = false
+strip = true
+opt-level = "z"
+lto = true
 codegen-units = 1
-lto = "thin"
-incremental = false
-panic = 'unwind'
-debug-assertions = false
-overflow-checks = false
-rpath = false
+panic = "abort"
 
 
 [profile.dev]

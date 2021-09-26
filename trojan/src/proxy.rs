@@ -102,6 +102,7 @@ async fn udp_downstream(udp_socket: Arc<UdpSocket>, udp_associate: Arc<Mutex<Ass
                 write_half.flush().await?;
                 write_half.close().await?;
                 udps.remove(&ipv6_dst); // TODO remove Address::from
+                error!("udp_downstream remove udp associate: {:?}",&ipv6_dst);
             }
         }
         // if is_err {
@@ -209,8 +210,8 @@ impl ProxyBuilder {
                 sleep(time_to_live).await;
                 // cleanup expired associations. iter() will remove expired elements
                 // let _ = assoc_map.lock().await.iter();
-
-                let mut expired = assoc_map.lock().await.notify_iter()
+                let mut assoc = assoc_map.lock().await;
+                let mut expired = assoc.notify_iter()
                     .map(|entry| match entry {
                         TimedEntry::Expired(key, value) => Some((key,value)),
                         _ => None,
@@ -220,12 +221,13 @@ impl ProxyBuilder {
                     if w.is_some(){
                         error!("starting to close expired writer ");
                         let  ww = w.as_mut().unwrap();
-                        ww.1.flush().await?;
-                        ww.1.close().await?;
+                        ww.1.close().await.map_err(|e| {error!("try to close a closed socket: {:?}",e);e})?;
                         error!("closed expired writer: {:?}",ww.0);
                     }
                 }
+                error!("remaining udp associate num: {:?}",assoc.len())
             }
+            error!("exit from associate cleanup loop");
             Ok(()) as Result<()>
         });
 
@@ -235,23 +237,23 @@ impl ProxyBuilder {
     pub async fn start(self, mut receiver: async_channel::Receiver<bool>) -> Result<()> {
         // let listener = TcpListener::bind(&self.addr).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
         // let addr: SocketAddr = self.addr.parse().expect("Unable to parse socket address");
-        let addr = SocketAddr::from_str(self.addr.as_ref())
-            .map_err(|e| anyhow::anyhow!("unable to convert string ip:port to SocketAddr: {:?}", e))?;
+        // let addr = SocketAddr::from_str(self.addr.as_ref())
+        //     .map_err(|e| anyhow::anyhow!("unable to convert string ip:port to SocketAddr: {:?}", e))?;
+        //
+        // let ipv6 = to_ipv6_address(&addr);
+        // let socket = Socket::new(Domain::ipv6(), Type::stream(), None)?;
+        // socket.set_only_v6(false)?;
+        // socket.set_nonblocking(true)?;
+        // socket.set_read_timeout(Some(Duration::from_secs(60)))?;
+        // socket.set_write_timeout(Some(Duration::from_secs(60)))?;
+        // // socket.set_linger(Some(Duration::from_secs(10)))?;
+        // // socket.set_keepalive(Some(Duration::from_secs(60 )))?;
+        // socket.bind(&ipv6.into())?;
+        // socket.listen(128)?;
+        // let listener = TcpListener::from(socket.into_tcp_listener());
 
-        let ipv6 = to_ipv6_address(&addr);
-        let socket = Socket::new(Domain::ipv6(), Type::stream(), None)?;
-        socket.set_only_v6(false)?;
-        socket.set_nonblocking(true)?;
-        socket.set_read_timeout(Some(Duration::from_secs(60)))?;
-        socket.set_write_timeout(Some(Duration::from_secs(60)))?;
-        // socket.set_linger(Some(Duration::from_secs(10)))?;
-        // socket.set_keepalive(Some(Duration::from_secs(60 )))?;
-        socket.bind(&ipv6.into())?;
-        socket.listen(128)?;
-        let listener = TcpListener::from(socket.into_tcp_listener());
-
-        // let listener = TcpListener::bind(&self.addr).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
-        // info!("proxy started at: {}", self.addr);
+        let listener = TcpListener::bind(&self.addr).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+        info!("proxy started at: {}", self.addr);
 
         let resolver = Arc::new(
             // for cloudflare dns, there is an issue: error notifying wait, possible future leak: TrySendError
@@ -313,16 +315,16 @@ async fn process_stream(
 
     debug!("new connection from {}", source);
 
-    // let handshake = acceptor.accept(raw_stream).await;
+    let handshake = acceptor.accept(raw_stream).await;
 
-    let  handshake = timeout(
-        Duration::from_secs(5),
-        acceptor.accept_with(raw_stream, |s| {
-            s.set_buffer_limit(DEFAULT_BUFFER_SIZE);
-        })
-    )
-    .await?
-    .map_err(|e| Error::Eor(anyhow::anyhow!("tls handshake within 5 secs: {:?}", e)));
+    // let  handshake = timeout(
+    //     Duration::from_secs(5),
+    //     acceptor.accept_with(raw_stream, |s| {
+    //         s.set_buffer_limit(DEFAULT_BUFFER_SIZE);
+    //     })
+    // )
+    // .await?
+    // .map_err(|e| Error::Eor(anyhow::anyhow!("tls handshake within 5 secs: {:?}", e)));
 
     let udp_associate = udp_associate.clone();
 
@@ -346,7 +348,7 @@ async fn process_stream(
         }
         Err(err) => {
             error!("error handshaking: {:?} from source: {}", err, source);
-            Err(err)
+            Err(Error::Eor(anyhow::anyhow!("{:?}",err)))
         }
     }
 }
@@ -552,25 +554,25 @@ async fn proxy(
         CMD_TCP_CONNECT => {
             debug!("TcpConnect target addr: {:?}", addr);
             // error!("before {:?}", &addr);
-            let socket_addr = addr.to_socket_addr(&resolver).await?;
-
-            let domain_type = if socket_addr.is_ipv4() {
-                Domain::ipv4()
-            } else {
-                Domain::ipv6()
-            };
-
-            let socket = Socket::new(domain_type, Type::stream(), None)?;
-            socket.set_read_timeout(Some(Duration::from_secs(60)))?;
-            socket.set_write_timeout(Some(Duration::from_secs(60)))?;
-            // socket.set_linger(Some(Duration::from_secs(10)))?;
-            // socket.set_keepalive(Some(Duration::from_secs(60 )))?;
-            socket.connect_timeout(&SockAddr::from(socket_addr), Duration::from_secs(15))?;
-            socket.set_nonblocking(true)?;
-            let tcp_stream = TcpStream::from(socket.into_tcp_stream());
+            // let socket_addr = addr.to_socket_addr(&resolver).await?;
+            //
+            // let domain_type = if socket_addr.is_ipv4() {
+            //     Domain::ipv4()
+            // } else {
+            //     Domain::ipv6()
+            // };
+            //
+            // let socket = Socket::new(domain_type, Type::stream(), None)?;
+            // socket.set_read_timeout(Some(Duration::from_secs(60)))?;
+            // socket.set_write_timeout(Some(Duration::from_secs(60)))?;
+            // // socket.set_linger(Some(Duration::from_secs(10)))?;
+            // // socket.set_keepalive(Some(Duration::from_secs(60 )))?;
+            // socket.connect_timeout(&SockAddr::from(socket_addr), Duration::from_secs(15))?;
+            // socket.set_nonblocking(true)?;
+            // let tcp_stream = TcpStream::from(socket.into_tcp_stream());
             // error!("after {:?}", &socket_addr);
-            // let tcp_stream =
-            //     TcpStream::connect(addr.to_string()).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+            let tcp_stream =
+                TcpStream::connect(addr.to_string()).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
             debug!("connect to target: {} from source: {}", addr, source);
 
             let copy_future = tcp::CopyFuture::new(tls_stream, tcp_stream, Duration::from_secs(60));
@@ -671,7 +673,7 @@ async fn proxy(
                 // let ipv6_addr = addr.to_ipv6(&resolver).await?;
                 debug!("loop ipv6: {:?}", ipv6_addr);
                 if addr.is_ipv4_unspecified() {
-                    debug!("unspecified incomming udp dst addr");
+                    debug!("unspecified incoming udp dst addr");
                     Some(tls_stream_writer)
                 } else {
                     // let addr = to_ipv6_address(&addr);
@@ -681,8 +683,7 @@ async fn proxy(
 
                         Some(tls_stream_writer)
                     } else {
-                        debug!(": associate insert:{:?}", &ipv6_addr);
-
+                        error!(": associate insert:{:?}", &ipv6_addr);
                         udp_pairs.insert(ipv6_addr, tls_stream_writer);
                         None
                     }
@@ -800,46 +801,47 @@ async fn proxy(
                 futures::pin_mut!(client_to_server);
                 futures::pin_mut!(server_to_client);
 
-                let res = futures::future::select(client_to_server, server_to_client).await;
-                let ret = match res {
-                    Either::Left((Err(e), fut_right)) => {
-                        debug!("udp copy to remote closed");
-                        fut_right.await?;
-                        // std::mem::drop(fut_right);
-                        // let _ = timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
-                        //     fut_right.await?;
-                        //     Ok(()) as Result<()>
-                        // })
-                        // .await?;
-                        Err(anyhow::anyhow!("UdpAssociate copy local to remote error: {:?}", e))?
-                    }
-                    Either::Right((Err(e), fut_left)) => {
-                        debug!("udp copy to local closed");
-                        std::mem::drop(fut_left);
-                        // timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
-                        //     fut_left.await;
-                        //     Ok(()) as Result<()>
-                        // })
-                        //     .await;
-                        Err(anyhow::anyhow!("UdpAssociate copy remote to local error: {:?}", e))?
-                    }
-                    Either::Left((Ok(_), fut_right)) => {
-                        fut_right.await
-                        // timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
-                        //     fut_right.await?;
-                        //     Ok(()) as Result<()>
-                        // })
-                        // .await?
-                    }
-                    Either::Right((Ok(_), fut_left)) => {
-                        timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
-                            fut_left.await?;
-                            Ok(()) as Result<()>
-                        })
-                        .await?
-                    }
-                };
-                return Err(anyhow::anyhow!("{:?}", ret))?
+                let _res = futures::future::join(client_to_server, server_to_client).await;
+                // let ret = match res {
+                //     Either::Left((Err(e), fut_right)) => {
+                //         debug!("udp copy to remote closed");
+                //         fut_right.await?;
+                //         // std::mem::drop(fut_right);
+                //         // let _ = timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
+                //         //     fut_right.await?;
+                //         //     Ok(()) as Result<()>
+                //         // })
+                //         // .await?;
+                //         Err(anyhow::anyhow!("UdpAssociate copy local to remote error: {:?}", e))?
+                //     }
+                //     Either::Right((Err(e), fut_left)) => {
+                //         debug!("udp copy to local closed");
+                //         std::mem::drop(fut_left);
+                //         // timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
+                //         //     fut_left.await;
+                //         //     Ok(()) as Result<()>
+                //         // })
+                //         //     .await;
+                //         Err(anyhow::anyhow!("UdpAssociate copy remote to local error: {:?}", e))?
+                //     }
+                //     Either::Left((Ok(_), fut_right)) => {
+                //         fut_right.await
+                //         // timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
+                //         //     fut_right.await?;
+                //         //     Ok(()) as Result<()>
+                //         // })
+                //         // .await?
+                //     }
+                //     Either::Right((Ok(_), fut_left)) => {
+                //         timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
+                //             fut_left.await?;
+                //             Ok(()) as Result<()>
+                //         })
+                //         .await?
+                //     }
+                // };
+                return Ok(())
+                // return Err(anyhow::anyhow!("{:?}", ret))?
                 // use std::net::Shutdown;
                 // tls_inner.shutdown(Shutdown::Both)?;
                 // Ok(RequestHeader::UdpAssociate(hash_buf))

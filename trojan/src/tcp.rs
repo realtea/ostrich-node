@@ -107,18 +107,18 @@ where
 
         if let Poll::Ready(()) = this.active_timeout.poll_unpin(cx) {
             // ready!(Pin::new(&mut self.src).poll_flush(cx))?;
-            log::error!("!!! before delay close !!!");
+            // log::error!("!!! before delay close !!!");
             ready!(Pin::new(&mut self.src).poll_close(cx)).map_err(|e| {
-                log::error!("first connection close: {:?}", e);
+                // log::error!("first connection close: {:?}", e);
                 e
             })?;
 
             // ready!(Pin::new(&mut self.dst).poll_flush(cx))?;
             ready!(Pin::new(&mut self.dst).poll_close(cx)).map_err(|e| {
-                log::error!("second connection close: {:?}", e);
+                // log::error!("second connection close: {:?}", e);
                 e
             })?;
-            log::error!("after delay close");
+            // log::error!("after delay close");
             return Poll::Ready(Err(io::ErrorKind::TimedOut.into()))
         }
 
