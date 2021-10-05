@@ -1,38 +1,35 @@
 #![allow(unreachable_code)]
-use crate::{load_certs, load_keys, tcp, to_ipv6_address, Address, RELAY_BUFFER_SIZE, SessionMessage, Connection};
+use crate::{load_certs, load_keys, tcp, Address, Connection, SessionMessage, RELAY_BUFFER_SIZE};
 use async_std::{
     future::timeout,
     net::{TcpListener, TcpStream, UdpSocket},
-    task::{sleep, spawn}
+    task::{spawn}
 };
 use async_tls::{server::TlsStream, TlsAcceptor};
 use bytes::BufMut;
 use errors::{Error, Result};
-// use smolscale::spawn;
-// use futures_lite::io::copy;
 use async_std::sync::Mutex;
 use async_std_resolver::{config, resolver, AsyncStdResolver};
-use futures::io::{ReadHalf, WriteHalf};
+use futures::{
+    channel::oneshot,
+    io::{ WriteHalf},
+    select
+};
 use futures_util::{
-    future::Either, io::AsyncReadExt, stream::StreamExt, AsyncRead, AsyncWrite, AsyncWriteExt, FutureExt
+    future::Either, io::AsyncReadExt, stream::StreamExt, AsyncRead, AsyncWrite, AsyncWriteExt, FutureExt, SinkExt
 };
 use heapless::Vec as StackVec;
 use log::{debug, error, info};
 use lru_time_cache::{LruCache, TimedEntry};
-use rustls::{NoClientAuth, ServerConfig, Session};
-use socket2::{Domain, SockAddr, Socket, Type};
+use rustls::{NoClientAuth, ServerConfig};
 use std::{
     io,
     net::{Ipv6Addr, SocketAddr, SocketAddrV6},
-    str::FromStr,
+    ops::Add,
     sync::Arc,
     time::Duration
 };
-use std::ops::Add;
-use futures_util::SinkExt;
-use futures::select;
-use futures::channel::oneshot;
-use tokio::time::{interval,  MissedTickBehavior};
+use tokio::time::{interval, MissedTickBehavior};
 cfg_if::cfg_if! {
     if #[cfg(wss)] {
         use ws_stream_tungstenite::WsStream as AsyncWsStream;
@@ -63,13 +60,12 @@ pub struct ProxyBuilder {
 
 impl ProxyBuilder {
     pub async fn new(
-        addr: String, key: String, cert: String, authenticator: Vec<String>, fallback: String,time_to_live: Duration,
+        addr: String, key: String, cert: String, authenticator: Vec<String>, fallback: String, time_to_live: Duration,
         mut connection_activity_rx: futures::channel::mpsc::Receiver<SessionMessage>
     ) -> Result<Self> {
-
         spawn(async move {
             let mut inter = interval(time_to_live.add(Duration::from_secs(45)));
-            // inter.set_missed_tick_behavior(MissedTickBehavior::Skip);
+            inter.set_missed_tick_behavior(MissedTickBehavior::Burst);
 
             let mut endpoint: LruCache<SocketAddr, Connection> =
                 LruCache::with_expiry_duration_and_capacity(time_to_live, u16::MAX as usize);
@@ -155,7 +151,10 @@ impl ProxyBuilder {
         Ok(Self { addr, key, cert, authenticator, fallback })
     }
 
-    pub async fn start(self, mut receiver: async_channel::Receiver<bool>,     mut connection_activity_tx: futures::channel::mpsc::Sender<SessionMessage>) -> Result<()> {
+    pub async fn start(
+        self, mut receiver: async_channel::Receiver<bool>,
+        mut connection_activity_tx: futures::channel::mpsc::Sender<SessionMessage>
+    ) -> Result<()> {
         // let listener = TcpListener::bind(&self.addr).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
         // let addr: SocketAddr = self.addr.parse().expect("Unable to parse socket address");
         // let addr = SocketAddr::from_str(self.addr.as_ref())
@@ -212,6 +211,7 @@ impl ProxyBuilder {
                                     let process = process_stream(
                                         tls_acceptor,
                                         incoming_stream,
+                                        source,
                                         authenticator,
                                         fallback,
                                         resolver,
@@ -271,15 +271,15 @@ impl ProxyBuilder {
 // async fn process_stream(
 //     acceptor: Arc<TlsAcceptor>, raw_stream: TcpStream, authenticator: Arc<Vec<String>>, fallback: String
 // )
-const DEFAULT_BUFFER_SIZE: usize = 2 * 4096;
+// const DEFAULT_BUFFER_SIZE: usize = 2 * 4096;
 
 async fn process_stream(
-    acceptor: TlsAcceptor, raw_stream: TcpStream, authenticator: Vec<String>, fallback: String,
-    resolver: Arc<AsyncStdResolver>,  mut connection_activity_tx: futures::channel::mpsc::Sender<SessionMessage>
+    acceptor: TlsAcceptor, raw_stream: TcpStream, source: SocketAddr, authenticator: Vec<String>, fallback: String,
+    resolver: Arc<AsyncStdResolver>,  connection_activity_tx: futures::channel::mpsc::Sender<SessionMessage>
 ) -> Result<()> {
-    let source = raw_stream.peer_addr().map(|addr| addr.to_string()).unwrap_or_else(|_| "".to_owned());
-
-    debug!("new connection from {}", source);
+    // let source = raw_stream.peer_addr().map(|addr| addr.to_string()).unwrap_or_else(|_| "".to_owned());
+    //
+    // debug!("new connection from {}", source);
 
     let handshake = acceptor.accept(raw_stream).await;
 
@@ -301,7 +301,7 @@ async fn process_stream(
             ));
 
             debug!("handshake success from: {}", source);
-            match proxy(inner_stream, source.clone(), authenticator, fallback, resolver).await {
+            match proxy(inner_stream, source, authenticator, fallback, resolver, connection_activity_tx).await {
                 Ok(_) => Ok(()),
                 Err(err) => {
                     error!("error processing tls: {:?} from source: {}", err, source);
@@ -386,7 +386,6 @@ impl UdpAssociateHeader {
 }
 const CMD_TCP_CONNECT: u8 = 0x01;
 const CMD_UDP_ASSOCIATE: u8 = 0x03;
-const READ_TIMEOUT_WHEN_ONE_SHUTDOWN: std::time::Duration = std::time::Duration::from_secs(5);
 
 async fn redirect_fallback<#[cfg(feature = "wss")] S: AsyncRead + AsyncWrite + Unpin + Send>(
     // source: &str,
@@ -400,9 +399,9 @@ async fn redirect_fallback<#[cfg(feature = "wss")] S: AsyncRead + AsyncWrite + U
     debug!("connect to fallback: {}", target);
     tcp_stream.write_all(buf).await?;
 
-    let copy_future = tcp::CopyFuture::new(tls_stream, tcp_stream, Duration::from_secs(10));
-
-    copy_future.await?;
+    // let copy_future = tcp::CopyFuture::new(tls_stream, tcp_stream, Duration::from_secs(10));
+    //
+    // copy_future.await?;
     Ok(())
 }
 // async fn proxy(
@@ -410,8 +409,9 @@ async fn redirect_fallback<#[cfg(feature = "wss")] S: AsyncRead + AsyncWrite + U
 // )
 async fn proxy(
     #[cfg(not(feature = "wss"))] mut tls_stream: TlsStream<TcpStream>,
-    #[cfg(feature = "wss")] mut tls_stream: WsStream<S>, source: String, authenticator: Vec<String>, fallback: String,
-    resolver: Arc<AsyncStdResolver>
+    #[cfg(feature = "wss")] mut tls_stream: WsStream<S>, source: SocketAddr, authenticator: Vec<String>,
+    fallback: String, _resolver: Arc<AsyncStdResolver>,
+    mut connection_activity_tx: futures::channel::mpsc::Sender<SessionMessage>
 ) -> Result<()> {
     let mut passwd_buf: StackVec<u8, HASH_STR_LEN> = StackVec::new();
     passwd_buf.resize(HASH_STR_LEN, 0).map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
@@ -468,25 +468,13 @@ async fn proxy(
                 TcpStream::connect(addr.to_string()).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
             debug!("connect to target: {} from source: {}", addr, source);
 
-            let copy_future = tcp::CopyFuture::new(tls_stream, tcp_stream, Duration::from_secs(60));
+            let copy_future =
+                tcp::CopyFuture::new(tls_stream, tcp_stream, Duration::from_secs(60 * 5), source, connection_activity_tx);
             copy_future.await.map_err(|e| e)?;
-
         }
         CMD_UDP_ASSOCIATE => {
             debug!("UdpAssociate target addr: {:?}", addr);
-
             let (mut tls_stream_reader, mut tls_stream_writer) = tls_stream.split();
-            // let ipv6_addr = addr.to_ipv6(&resolver).await?;
-
-            let ipv6_addr = match addr.to_ipv6(&resolver).await {
-                Ok(a) => a,
-                Err(e) => {
-                    tls_stream_writer.close().await?;
-                    return Err(e)
-                }
-            };
-
-            // const RELAY_BUFFER_SIZE: usize = 0x4000;
 
             // let outbound = UdpSocket::bind(SocketAddr::from(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0)))
             //     .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
@@ -495,6 +483,7 @@ async fn proxy(
                 .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
             // let tls_inner = tls_stream;
 
+            let mut connection_activity_loop_tx = connection_activity_tx.clone();
             let client_to_server = async {
                 // let mut buf = [0u8; RELAY_BUFFER_SIZE];
                 let mut buf: StackVec<u8, RELAY_BUFFER_SIZE> = StackVec::new();
@@ -502,16 +491,21 @@ async fn proxy(
 
                 loop {
                     // error!("client_to_server never end");
-                    // let header = UdpAssociateHeader::read_from(&mut tls_stream_reader).await?;
-                    // if header.payload_len == 0 {
-                    //     break
-                    // }
-                    // buf.resize(header.payload_len as usize, 0)
-                    //     .map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
+                    let header = UdpAssociateHeader::read_from(&mut tls_stream_reader).await?;
+                    if header.payload_len == 0 {
+                        break
+                    }
+                    buf.resize(header.payload_len as usize, 0)
+                        .map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
 
-                    // tls_stream_reader.read_exact(&mut buf[..header.payload_len as usize]).await?;
+                    tls_stream_reader.read_exact(&mut buf[..header.payload_len as usize]).await?;
 
-                    let header = match timeout(std::time::Duration::from_secs(60), async {
+                    connection_activity_loop_tx.try_send(SessionMessage::KeepLive(source)).map_err(|e| {
+                        log::error!("send keepalive message error: {:?}", e);
+                        std::io::Error::new(std::io::ErrorKind::WriteZero, format!("{:?}", e))
+                    })?;
+
+/*                    let header = match timeout(std::time::Duration::from_secs(60), async {
                         let header = UdpAssociateHeader::read_from(&mut tls_stream_reader).await?;
                         if header.payload_len == 0 {
                             return Err(anyhow::anyhow!("udp associate header reading timeout"))
@@ -529,7 +523,7 @@ async fn proxy(
                             break
                         }
                     };
-
+*/
                     match outbound.send_to(&buf[..header.payload_len as usize], header.addr.to_string()).await {
                         Ok(n) => {
                             debug!("udp copy to remote: {} bytes", n);
@@ -553,17 +547,22 @@ async fn proxy(
                     .map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
 
                 loop {
-                    // let (len, dst) = outbound.recv_from(&mut buf).await?;
-                    //
-                    // if len == 0 {
-                    //     break
-                    // }
-                    // let header = UdpAssociateHeader::new(&Address::from(dst), len);
-                    // header.write_to(&mut tls_stream_writer).await?;
-                    // tls_stream_writer.write_all(&buf[..len]).await?;
-                    // debug!("udp copy to client: {} bytes", len);
+                    let (len, dst) = outbound.recv_from(&mut buf).await?;
 
-                    match timeout(std::time::Duration::from_secs(60), async {
+                    if len == 0 {
+                        break
+                    }
+                    let header = UdpAssociateHeader::new(&Address::from(dst), len);
+                    header.write_to(&mut tls_stream_writer).await?;
+                    tls_stream_writer.write_all(&buf[..len]).await?;
+                    debug!("udp copy to client: {} bytes", len);
+
+                    connection_activity_tx.try_send(SessionMessage::KeepLive(source)).map_err(|e| {
+                        log::error!("send keepalive message error: {:?}", e);
+                        std::io::Error::new(std::io::ErrorKind::WriteZero, format!("{:?}", e))
+                    })?;
+
+/*                    match timeout(std::time::Duration::from_secs(60), async {
                         let (len, dst) = outbound.recv_from(&mut buf).await?;
                         // if len == 0 {
                         //     break
@@ -586,7 +585,7 @@ async fn proxy(
                             error!("reading client socket timeout:{:?}", e);
                             break
                         }
-                    }
+                    }*/
                 }
                 tls_stream_writer.flush().await?;
                 tls_stream_writer.close().await?;

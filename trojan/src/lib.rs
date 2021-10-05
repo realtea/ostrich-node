@@ -10,10 +10,11 @@ mod ws;
 // mod util;
 
 use anyhow::anyhow;
+use async_std::{net::TcpStream, task::JoinHandle};
 use async_std_resolver::AsyncStdResolver;
 use bytes::{Buf, BufMut};
 use errors::{Error, Result};
-use futures::{AsyncRead, AsyncReadExt};
+use futures::{channel::oneshot, AsyncRead, AsyncReadExt};
 use hex::encode;
 pub use proxy::*;
 use rustls::{
@@ -30,9 +31,6 @@ use std::{
     path::Path,
     sync::Arc
 };
-use futures::channel::oneshot;
-use async_std::net::TcpStream;
-use async_std::task::JoinHandle;
 
 
 pub enum SessionMessage {

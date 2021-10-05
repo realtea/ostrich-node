@@ -23,6 +23,7 @@
 //!
 //! Inspired by [`futures::io::Copy`].
 
+use crate::SessionMessage;
 use futures::{
     future::{Future, FutureExt},
     io::{AsyncBufRead, AsyncRead, AsyncWrite, BufReader},
@@ -31,6 +32,7 @@ use futures::{
 use futures_timer::Delay;
 use std::{
     io,
+    net::SocketAddr,
     pin::Pin,
     task::{Context, Poll},
     time::Duration
@@ -41,16 +43,22 @@ pub struct CopyFuture<S, D> {
     dst: BufReader<D>,
 
     active_timeout: Delay,
-    configured_timeout: Duration
+    configured_timeout: Duration,
+    tag: SocketAddr,
+    sender: futures::channel::mpsc::Sender<SessionMessage>
 }
 
 impl<S: AsyncRead, D: AsyncRead> CopyFuture<S, D> {
-    pub fn new(src: S, dst: D, timeout: Duration) -> Self {
+    pub fn new(
+        src: S, dst: D, timeout: Duration, tag: SocketAddr, sender: futures::channel::mpsc::Sender<SessionMessage>
+    ) -> Self {
         CopyFuture {
             src: BufReader::new(src),
             dst: BufReader::new(dst),
             active_timeout: Delay::new(timeout),
-            configured_timeout: timeout
+            configured_timeout: timeout,
+            tag,
+            sender
         }
     }
 }
@@ -63,6 +71,8 @@ where
     type Output = io::Result<()>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let mut sender = self.sender.clone();
+        let tag = self.tag.clone();
         let this = &mut *self;
 
         let mut reset_timer = false;
@@ -92,7 +102,13 @@ where
                 // Both source and destination are done sending data.
                 (Status::Done, Status::Done) => return Poll::Ready(Ok(())),
                 // Either source or destination made progress, thus reset timer.
-                (Status::Progressed, _) | (_, Status::Progressed) => reset_timer = true,
+                (Status::Progressed, _) | (_, Status::Progressed) => {
+                    sender.try_send(SessionMessage::KeepLive(tag)).map_err(|e| {
+                        log::error!("send keepalive message error: {:?}", e);
+                        std::io::Error::new(std::io::ErrorKind::WriteZero, format!("{:?}", e))
+                    })?;
+                    reset_timer = true
+                }
                 // Both are pending. Check if timer fired, otherwise return Poll::Pending.
                 (Status::Pending, Status::Pending) => break,
                 // One is done sending data, the other is pending. Check if timer fired, otherwise
