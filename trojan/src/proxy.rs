@@ -1,5 +1,5 @@
 #![allow(unreachable_code)]
-use crate::{load_certs, load_keys, tcp, to_ipv6_address, Address, RELAY_BUFFER_SIZE};
+use crate::{load_certs, load_keys, tcp, to_ipv6_address, Address, RELAY_BUFFER_SIZE, SessionMessage, Connection};
 use async_std::{
     future::timeout,
     net::{TcpListener, TcpStream, UdpSocket},
@@ -28,7 +28,11 @@ use std::{
     sync::Arc,
     time::Duration
 };
-
+use std::ops::Add;
+use futures_util::SinkExt;
+use futures::select;
+use futures::channel::oneshot;
+use tokio::time::{interval,  MissedTickBehavior};
 cfg_if::cfg_if! {
     if #[cfg(wss)] {
         use ws_stream_tungstenite::WsStream as AsyncWsStream;
@@ -53,188 +57,105 @@ pub struct ProxyBuilder {
     key: String,
     cert: String,
     authenticator: Vec<String>,
-    fallback: String,
-    udp_associate: SharedAssociationMap,
-    udp_socket: Arc<UdpSocket>
+    fallback: String
 }
 
-
-async fn udp_downstream(udp_socket: Arc<UdpSocket>, udp_associate: Arc<Mutex<AssociationMap>>) -> Result<()> {
-    // let mut buf = [0u8; RELAY_BUFFER_SIZE];
-    let mut buf: StackVec<u8, RELAY_BUFFER_SIZE> = StackVec::new();
-    buf.resize(RELAY_BUFFER_SIZE, 0).map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
-
-    loop {
-        // match timeout(std::time::Duration::from_secs(15), async {
-        let (len, dst) = udp_socket.recv_from(&mut buf).await?;
-        //     // if len == 0 {
-        //     //     break
-        //     // }
-        //     Ok((len, dst)) as Result<(usize, SocketAddr)>
-        //     // (len,dst)
-        // })
-        // .await?
-        // {
-        //     Ok((len, dst)) => {
-        if len == 0 {
-            break
-        }
-        let ipv6_dst = to_ipv6_address(&dst);
-        let mut udps = udp_associate.lock().await;
-        if let Some(mut write_half) = udps.get_mut(&ipv6_dst) {
-            let mut is_err: bool = false;
-            // error!("udp_downstream: associate get: {:?}",&ipv6_dst);
-            let header = UdpAssociateHeader::new(&Address::from(dst), len);
-            match header.write_to(&mut write_half).await {
-                Ok(_) => {}
-                Err(_) => {
-                    is_err = true;
-                }
-            }
-            match write_half.write_all(&buf[..len]).await {
-                Ok(_) => {}
-                Err(_) => {
-                    is_err = true;
-                }
-            }
-            debug!("udp_downstream: {} bytes", len);
-            if is_err {
-                write_half.flush().await?;
-                write_half.close().await?;
-                udps.remove(&ipv6_dst); // TODO remove Address::from
-                error!("udp_downstream remove udp associate: {:?}",&ipv6_dst);
-            }
-        }
-        // if is_err {
-        //     udps.remove(&ipv6_dst); // TODO remove Address::from
-        // }
-        // }
-        // Err(e) => {
-        //     error!("reading client socket timeout:{:?}", e);
-        //     break
-        // }
-    }
-    // }
-    Ok(()) as Result<()>
-}
-// let ipv6_dst = to_ipv6_address(&dst);
-// let mut udps = udp_associate.lock().await;
-
-async fn udp_upstream<T>(
-    mut inbound: ReadHalf<T>,
-    outbound: Arc<UdpSocket> // udp_associate: Arc<Mutex<AssociationMap>> // ,ipv6_dst: &SocketAddrV6
-) -> Result<()>
-where
-    T: AsyncRead
-{
-    let mut buf: StackVec<u8, RELAY_BUFFER_SIZE> = StackVec::new();
-
-    loop {
-        // error!("client_to_server never end");
-        let header = UdpAssociateHeader::read_from(&mut inbound).await?;
-        if header.payload_len == 0 {
-            break
-        }
-        buf.resize(header.payload_len as usize, 0)
-            .map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
-        // let dst = header.addr;
-        // tls_stream_reader.read_exact(&mut buf[..header.payload_len as usize]).await?;
-
-        // let is_err:  bool = false;
-        match timeout(std::time::Duration::from_secs(60), async {
-            inbound.read_exact(&mut buf[..header.payload_len as usize]).await?;
-            Ok(()) as Result<()>
-        })
-        .await
-        {
-            Ok(_) => {}
-            Err(e) => {
-                error!("reading client socket timeout:{:?}", e);
-                // let mut udps = udp_associate.lock().await;
-                // match udps.remove(&ipv6_dst){
-                //     None => {}
-                //     Some(mut writer) => {writer.close().await?;}
-                // }
-                break
-            }
-        }
-        // debug!("udp_upstream: {}:{}", &ipv6_dst,&header.addr);
-        match outbound.send_to(&buf[..header.payload_len as usize], header.addr.to_string()).await {
-            Ok(n) => {
-                debug!("udp_upstream: {} bytes", n);
-
-                if n == 0 {
-                    // let mut udps = udp_associate.lock().await;
-                    // match udps.remove(&ipv6_dst){
-                    //     None => {}
-                    //     Some(mut writer) => {writer.close().await?;}
-                    // }
-                    break
-                }
-            }
-            Err(e) => {
-                error!("udp send to upstream error: {:?}", e);
-                // let mut udps = udp_associate.lock().await;
-                // match udps.remove(&ipv6_dst){
-                //     None => {}
-                //     Some(mut writer) => {writer.close().await?;}
-                // }
-                break
-            }
-        }
-    }
-    std::mem::drop(buf);
-
-    Ok(()) as Result<()>
-}
 
 impl ProxyBuilder {
     pub async fn new(
-        addr: String, key: String, cert: String, authenticator: Vec<String>, fallback: String, time_to_live: Duration
+        addr: String, key: String, cert: String, authenticator: Vec<String>, fallback: String,time_to_live: Duration,
+        mut connection_activity_rx: futures::channel::mpsc::Receiver<SessionMessage>
     ) -> Result<Self> {
-        let udp_socket = UdpSocket::bind(SocketAddr::from(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0))).await?;
 
-        let udp_socket = Arc::new(udp_socket);
-        let udp_associate: SharedAssociationMap = Arc::new(Mutex::new(LruCache::with_expiry_duration(time_to_live)));
-
-        let downstream_associate = udp_associate.clone();
-        let udp = udp_socket.clone();
         spawn(async move {
-            udp_downstream(udp, downstream_associate).await?;
-            Ok(()) as Result<()>
-        });
+            let mut inter = interval(time_to_live.add(Duration::from_secs(45)));
+            // inter.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-        let assoc_map = udp_associate.clone();
-        spawn(async move {
+            let mut endpoint: LruCache<SocketAddr, Connection> =
+                LruCache::with_expiry_duration_and_capacity(time_to_live, u16::MAX as usize);
+
+            use crate::SessionMessage::{DisConnected, KeepLive, NewPeer};
+
             loop {
-                sleep(time_to_live).await;
-                // cleanup expired associations. iter() will remove expired elements
-                // let _ = assoc_map.lock().await.iter();
-                let mut assoc = assoc_map.lock().await;
-                let mut expired = assoc.notify_iter()
-                    .map(|entry| match entry {
-                        TimedEntry::Expired(key, value) => Some((key,value)),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>();
-                for  w in expired.iter_mut(){
-                    if w.is_some(){
-                        error!("starting to close expired writer ");
-                        let  ww = w.as_mut().unwrap();
-                        ww.1.close().await.map_err(|e| {error!("try to close a closed socket: {:?}",e);e})?;
-                        error!("closed expired writer: {:?}",ww.0);
+                select! {
+                    _ = inter.tick().fuse() => {
+                        let mut expired = endpoint
+                            .notify_iter()
+                            .filter_map(|entry| {
+                                match entry {
+                                    TimedEntry::Expired(key, value) => Some((key, value)),
+                                    _ => None
+                                }
+                            })
+                            .collect::<Vec<_>>();
+                        let remains = endpoint.len();
+                        error!("expired connections  num: {}",expired.len());
+                        while let Some((_k,  mut w)) = expired.pop() {
+                            // if w.is_some() {
+                            error!("starting to terminate task from client connection: {:?}",&w.addr);
+                            std::mem::drop(w.terminator);
+                            w.stream.close().await?;
+                            let _ = w.task.await.map_err(|e|{
+                                error!("wait task exit error: {:?}",e);
+                                Error::Eor(anyhow::anyhow!("{:?}",e))
+                            })?;
+                            // w.task.abort();
+
+                            error!("task terminated from client connection: {:?}",&w.addr)
+                            // }
+                        }
+                        error!("connections remained num: {}",remains);
+                    },
+                    session =  connection_activity_rx.next().fuse() =>{
+                        if session.is_some(){
+                        let session = session.unwrap();
+                            match session {
+                                NewPeer(connection) => {
+                                    if endpoint.contains_key(&connection.addr){
+                                        endpoint.get(&connection.addr);
+                                    }else {
+                                        endpoint.insert(connection.addr, connection);
+                                    }
+                                },
+                                KeepLive(addr)=>{
+                                      match endpoint.get(&addr){
+                                        Some(_connection) =>{
+                                            // error!("keepalive session message from {} -- {}",&addr,&connection.addr)
+                                        },
+                                        None =>{
+                                            error!("keepalive session message invalid {}",&addr)
+                                        }
+                                    }
+                                },
+                                DisConnected(addr)=>{
+                                      match endpoint.remove(&addr){
+                                        Some(mut connection) =>{
+                                            // error!("disconnected session message from {} -- {}",&addr,&connection.addr);
+                                            std::mem::drop(connection.terminator);
+                                            connection.stream.close().await?;
+                                            let _= connection.task.await.map_err(|e|{
+                                                error!("wait task exit error: {:?}",e);
+                                                Error::Eor(anyhow::anyhow!("{:?}",e))
+                                            })?;
+                                            error!("disconnected from client connection: {:?}",&connection.addr)
+                                            // connection.task.abort();
+                                        },
+                                        None =>{
+                                            error!("disconnected session message invalid {}",&addr)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
-                error!("remaining udp associate num: {:?}",assoc.len())
             }
-            error!("exit from associate cleanup loop");
             Ok(()) as Result<()>
         });
-
-        Ok(Self { addr, key, cert, authenticator, fallback, udp_associate, udp_socket })
+        Ok(Self { addr, key, cert, authenticator, fallback })
     }
 
-    pub async fn start(self, mut receiver: async_channel::Receiver<bool>) -> Result<()> {
+    pub async fn start(self, mut receiver: async_channel::Receiver<bool>,     mut connection_activity_tx: futures::channel::mpsc::Sender<SessionMessage>) -> Result<()> {
         // let listener = TcpListener::bind(&self.addr).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
         // let addr: SocketAddr = self.addr.parse().expect("Unable to parse socket address");
         // let addr = SocketAddr::from_str(self.addr.as_ref())
@@ -270,22 +191,67 @@ impl ProxyBuilder {
         let mut tls_acceptor = TlsAcceptor::from(Arc::new(tls_config));
 
         let mut incoming = listener.incoming();
-        use futures::select;
+
         loop {
             // let mut receiver = receiver.clone();
             select! {
                 incoming_stream = incoming.next().fuse() =>  {
                     // Some(incoming_stream) =>{
                     let incoming_stream = incoming_stream.ok_or(Error::Eor(anyhow::anyhow!("got an empty incoming stream")))??;
-                    spawn(process_stream(
-                        tls_acceptor.clone(),
-                        incoming_stream,
-                        self.authenticator.clone(),
-                        self.fallback.clone(),
-                        self.udp_associate.clone(),
-                        self.udp_socket.clone(),
-                        resolver.clone()
-                    ));
+                    let source = incoming_stream.peer_addr()?;
+                    let (terminator_tx, terminator_rx) = oneshot::channel();
+                    let authenticator = self.authenticator.clone();
+                    let fallback = self.fallback.clone();
+                    let resolver = resolver.clone();
+                    let mut connection_activity_loop_tx = connection_activity_tx.clone();
+                    let tcp_stream = incoming_stream.clone();
+                    let tls_acceptor = tls_acceptor.clone();
+                    let task =
+                            spawn(
+                                async move {
+                                    let process = process_stream(
+                                        tls_acceptor,
+                                        incoming_stream,
+                                        authenticator,
+                                        fallback,
+                                        resolver,
+                                        connection_activity_loop_tx.clone()
+                                    );
+                                    let terminator = async {
+                                        terminator_rx.await.map_err(|e|{
+                                            error!("terminator received: {:?}",e);
+                                            Error::Eor(anyhow::anyhow!("{:?}",e))
+                                        })?;
+                                        Ok(()) as Result<()>
+                                    };
+
+                                    futures::pin_mut!(terminator);
+                                    futures::pin_mut!(process);
+
+                                    match futures::future::select(process, terminator).await{
+                                        Either::Left(_) => {
+                                            connection_activity_loop_tx.send(SessionMessage::DisConnected(source)).await.map_err(|e| {
+                                            log::error!("send disconnected message error: {:?}", e);
+                                            Error::Eor(anyhow::anyhow!("{:?}", e))
+                                            })?;
+                                            error!("task exit from client connection processor: {:}",&source)
+                                        },
+                                        Either::Right(_) => {error!("task exit from client connection terminator: {:}",&source)},
+                                    }
+                                    Ok(()) as Result<()>
+                                }
+                            );
+
+                        let conneccion = SessionMessage::NewPeer(Connection{
+                                addr: source,
+                                task,
+                                stream: tcp_stream,
+                                terminator: terminator_tx,
+                        });
+                        connection_activity_tx.send(conneccion).await.map_err(|e|{
+                            error!("{}",e);
+                            Error::Eor(anyhow::anyhow!("{:?}",e))
+                        })?;
                     },
                 _ = receiver.next().fuse() =>{
                     let certs = load_certs(self.cert.as_ref())?;
@@ -309,7 +275,7 @@ const DEFAULT_BUFFER_SIZE: usize = 2 * 4096;
 
 async fn process_stream(
     acceptor: TlsAcceptor, raw_stream: TcpStream, authenticator: Vec<String>, fallback: String,
-    udp_associate: SharedAssociationMap, udp_socket: Arc<UdpSocket>, resolver: Arc<AsyncStdResolver>
+    resolver: Arc<AsyncStdResolver>,  mut connection_activity_tx: futures::channel::mpsc::Sender<SessionMessage>
 ) -> Result<()> {
     let source = raw_stream.peer_addr().map(|addr| addr.to_string()).unwrap_or_else(|_| "".to_owned());
 
@@ -326,7 +292,6 @@ async fn process_stream(
     // .await?
     // .map_err(|e| Error::Eor(anyhow::anyhow!("tls handshake within 5 secs: {:?}", e)));
 
-    let udp_associate = udp_associate.clone();
 
     match handshake {
         Ok(inner_stream) => {
@@ -336,9 +301,7 @@ async fn process_stream(
             ));
 
             debug!("handshake success from: {}", source);
-            match proxy(inner_stream, source.clone(), authenticator, fallback, udp_associate, udp_socket, resolver)
-                .await
-            {
+            match proxy(inner_stream, source.clone(), authenticator, fallback, resolver).await {
                 Ok(_) => Ok(()),
                 Err(err) => {
                     error!("error processing tls: {:?} from source: {}", err, source);
@@ -348,7 +311,7 @@ async fn process_stream(
         }
         Err(err) => {
             error!("error handshaking: {:?} from source: {}", err, source);
-            Err(Error::Eor(anyhow::anyhow!("{:?}",err)))
+            Err(Error::Eor(anyhow::anyhow!("{:?}", err)))
         }
     }
 }
@@ -440,76 +403,6 @@ async fn redirect_fallback<#[cfg(feature = "wss")] S: AsyncRead + AsyncWrite + U
     let copy_future = tcp::CopyFuture::new(tls_stream, tcp_stream, Duration::from_secs(10));
 
     copy_future.await?;
-
-
-    // let (mut target_stream, mut target_sink) = tcp_stream.split();
-    // let (mut from_tls_stream, mut from_tls_sink) = tls_stream.split();
-    //
-    // let s_t = format!("{}->{}", source.to_string(), target.to_string());
-    // let t_s = format!("{}->{}", target.to_string(), source.to_string());
-    // let source_to_target_ft = async move {
-    //     match copy(&mut from_tls_stream, &mut target_sink).await {
-    //         Ok(len) => {
-    //             debug!("total {} bytes copied from source to target: {}", len, s_t);
-    //             Ok(())
-    //         }
-    //         Err(err) => {
-    //             error!("{} error copying: {}", s_t, err);
-    //             target_sink.close().await?;
-    //             Err(err)
-    //         }
-    //     }
-    // };
-    //
-    // let target_to_source_ft = async move {
-    //     match copy(&mut target_stream, &mut from_tls_sink).await {
-    //         Ok(len) => {
-    //             debug!("total {} bytes copied from target: {}", len, t_s);
-    //             Ok(())
-    //         }
-    //         Err(err) => {
-    //             error!("{} error copying: {}", t_s, err);
-    //             from_tls_sink.close().await?;
-    //             Err(err)
-    //         }
-    //     }
-    // };
-    // futures::pin_mut!(source_to_target_ft);
-    // futures::pin_mut!(target_to_source_ft);
-    // // spawn(source_to_target_ft);
-    // // spawn(target_to_source_ft);
-    // let res = futures::future::select(source_to_target_ft, target_to_source_ft).await;
-    // match res {
-    //     Either::Left((Err(e), fut_right)) => {
-    //         debug!("udp copy to remote closed");
-    //         // std::mem::drop(fut_right);
-    //         let _ = timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
-    //             fut_right.await;
-    //             Ok(()) as Result<()>
-    //         })
-    //         .await;
-    //         Err(anyhow::anyhow!("tcp proxy copy local to remote error: {:?}", e))?
-    //     }
-    //     Either::Right((Err(e), fut_left)) => {
-    //         debug!("udp copy to local closed");
-    //         std::mem::drop(fut_left);
-    //         Err(anyhow::anyhow!("tcp proxy copy remote to local error: {:?}", e))?
-    //     }
-    //     Either::Left((Ok(_), right_fut)) => {
-    //         timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
-    //             right_fut.await;
-    //             Ok(()) as Result<()>
-    //         })
-    //         .await
-    //     }
-    //     Either::Right((Ok(_), left_fut)) => {
-    //         timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
-    //             left_fut.await;
-    //             Ok(()) as Result<()>
-    //         })
-    //         .await
-    //     }
-    // };
     Ok(())
 }
 // async fn proxy(
@@ -518,7 +411,7 @@ async fn redirect_fallback<#[cfg(feature = "wss")] S: AsyncRead + AsyncWrite + U
 async fn proxy(
     #[cfg(not(feature = "wss"))] mut tls_stream: TlsStream<TcpStream>,
     #[cfg(feature = "wss")] mut tls_stream: WsStream<S>, source: String, authenticator: Vec<String>, fallback: String,
-    udp_associate: SharedAssociationMap, udp_socket: Arc<UdpSocket>, resolver: Arc<AsyncStdResolver>
+    resolver: Arc<AsyncStdResolver>
 ) -> Result<()> {
     let mut passwd_buf: StackVec<u8, HASH_STR_LEN> = StackVec::new();
     passwd_buf.resize(HASH_STR_LEN, 0).map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
@@ -576,84 +469,8 @@ async fn proxy(
             debug!("connect to target: {} from source: {}", addr, source);
 
             let copy_future = tcp::CopyFuture::new(tls_stream, tcp_stream, Duration::from_secs(60));
-            copy_future.await.map_err(|e| {
+            copy_future.await.map_err(|e| e)?;
 
-                e
-            })?;
-
-            // let s_t = format!("{}->{}", source, addr.to_string());
-            // let t_s = format!("{}->{}", addr.to_string(), source);
-            // let source_to_target_ft = async {
-            //     match copy(&mut target_stream, &mut from_tls_sink).await {
-            //         Ok(len) => {
-            //             debug!("total {} bytes copied from source to target: {}", len, s_t);
-            //         }
-            //         Err(err) => {
-            //             error!("{} error copying: {}", s_t, err);
-            //         }
-            //     }
-            //     from_tls_sink.close().await?;
-            //     Ok(()) as Result<()>
-            // };
-            //
-            // let target_to_source_ft = async {
-            //     match copy(&mut from_tls_stream, &mut target_sink).await {
-            //         Ok(len) => {
-            //             debug!("total {} bytes copied from target: {}", len, t_s);
-            //         }
-            //         Err(err) => {
-            //             error!("{} error copying: {}", t_s, err);
-            //         }
-            //     }
-            //     // tcp_stream.close().await?;
-            //     Ok(()) as Result<()>
-            // };
-            // futures::pin_mut!(source_to_target_ft);
-            // futures::pin_mut!(target_to_source_ft);
-            // // spawn(source_to_target_ft);
-            // // spawn(target_to_source_ft);
-            // let res = futures::future::select(source_to_target_ft, target_to_source_ft).await;
-            // match res {
-            //     Either::Left((Err(e), fut_right)) => {
-            //         debug!("udp copy to remote closed");
-            //         std::mem::drop(fut_right);
-            //         // let _ = timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
-            //         //     fut_right.await;
-            //         //     Ok(()) as Result<()>
-            //         // })
-            //         //     .await;
-            //         Err(anyhow::anyhow!("tcp proxy copy local to remote error: {:?}", e))?
-            //     }
-            //     Either::Right((Err(e), fut_left)) => {
-            //         debug!("udp copy to local closed");
-            //         std::mem::drop(fut_left);
-            //         // timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
-            //         //     fut_left.await;
-            //         //     Ok(()) as Result<()>
-            //         // })
-            //         //     .await;
-            //         Err(anyhow::anyhow!("tcp proxy copy remote to local error: {:?}", e))?
-            //     }
-            //     Either::Left((Ok(_), right_fut)) => {
-            //         timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
-            //             right_fut.await?;
-            //             Ok(()) as Result<()>
-            //         })
-            //             .await
-            //     },
-            //     Either::Right((Ok(_), left_fut)) => {
-            //         timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
-            //             left_fut.await?;
-            //             Ok(()) as Result<()>
-            //         })
-            //             .await
-            //     }
-            // };
-            // use std::net::Shutdown;
-            // tcp_stream.shutdown(Shutdown::Both)?;
-            // tls_inner.shutdown(Shutdown::Both)?;
-
-            // Ok(RequestHeader::TcpConnect(hash_buf, addr))
         }
         CMD_UDP_ASSOCIATE => {
             debug!("UdpAssociate target addr: {:?}", addr);
@@ -669,193 +486,161 @@ async fn proxy(
                 }
             };
 
-            let cached = {
-                // let ipv6_addr = addr.to_ipv6(&resolver).await?;
-                debug!("loop ipv6: {:?}", ipv6_addr);
-                if addr.is_ipv4_unspecified() {
-                    debug!("unspecified incoming udp dst addr");
-                    Some(tls_stream_writer)
-                } else {
-                    // let addr = to_ipv6_address(&addr);
-                    let mut udp_pairs = udp_associate.lock().await;
-                    if udp_pairs.get(&ipv6_addr).is_some() {
-                        debug!("cached: {:?}", &ipv6_addr);
+            // const RELAY_BUFFER_SIZE: usize = 0x4000;
 
-                        Some(tls_stream_writer)
-                    } else {
-                        error!(": associate insert:{:?}", &ipv6_addr);
-                        udp_pairs.insert(ipv6_addr, tls_stream_writer);
-                        None
-                    }
-                }
-            };
-            if let Some(mut tls_stream_writer) = cached {
-                // const RELAY_BUFFER_SIZE: usize = 0x4000;
+            // let outbound = UdpSocket::bind(SocketAddr::from(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0)))
+            //     .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+            let outbound = UdpSocket::bind(SocketAddr::from(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0)))
+                .await
+                .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+            // let tls_inner = tls_stream;
 
-                // let outbound = UdpSocket::bind(SocketAddr::from(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0)))
-                //     .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
-                let outbound = UdpSocket::bind(SocketAddr::from(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0)))
+            let client_to_server = async {
+                // let mut buf = [0u8; RELAY_BUFFER_SIZE];
+                let mut buf: StackVec<u8, RELAY_BUFFER_SIZE> = StackVec::new();
+                // buf.resize(RELAY_BUFFER_SIZE, 0);
+
+                loop {
+                    // error!("client_to_server never end");
+                    // let header = UdpAssociateHeader::read_from(&mut tls_stream_reader).await?;
+                    // if header.payload_len == 0 {
+                    //     break
+                    // }
+                    // buf.resize(header.payload_len as usize, 0)
+                    //     .map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
+
+                    // tls_stream_reader.read_exact(&mut buf[..header.payload_len as usize]).await?;
+
+                    let header = match timeout(std::time::Duration::from_secs(60), async {
+                        let header = UdpAssociateHeader::read_from(&mut tls_stream_reader).await?;
+                        if header.payload_len == 0 {
+                            return Err(anyhow::anyhow!("udp associate header reading timeout"))
+                        }
+                        buf.resize(header.payload_len as usize, 0)
+                            .map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
+                        tls_stream_reader.read_exact(&mut buf[..header.payload_len as usize]).await?;
+                        Ok(header)
+                    })
                     .await
-                    .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
-                // let tls_inner = tls_stream;
+                    {
+                        Ok(header) => header?,
+                        Err(e) => {
+                            error!("reading client socket timeout:{:?}", e);
+                            break
+                        }
+                    };
 
-                let client_to_server = async {
-                    // let mut buf = [0u8; RELAY_BUFFER_SIZE];
-                    let mut buf: StackVec<u8, RELAY_BUFFER_SIZE> = StackVec::new();
-                    // buf.resize(RELAY_BUFFER_SIZE, 0);
-
-                    loop {
-                        // error!("client_to_server never end");
-                        // let header = UdpAssociateHeader::read_from(&mut tls_stream_reader).await?;
-                        // if header.payload_len == 0 {
-                        //     break
-                        // }
-                        // buf.resize(header.payload_len as usize, 0)
-                        //     .map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
-
-                        // tls_stream_reader.read_exact(&mut buf[..header.payload_len as usize]).await?;
-
-                       let header =  match timeout(std::time::Duration::from_secs(60), async {
-                            let header = UdpAssociateHeader::read_from(&mut tls_stream_reader).await?;
-                            if header.payload_len == 0 {
-                                return Err(anyhow::anyhow!("udp associate header reading timeout"))
-                            }
-                            buf.resize(header.payload_len as usize, 0)
-                                .map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
-                            tls_stream_reader.read_exact(&mut buf[..header.payload_len as usize]).await?;
-                            Ok(header)
-                        })
-                        .await
-                        {
-                            Ok(header) => {header?}
-                            Err(e) => {
-                                error!("reading client socket timeout:{:?}", e);
-                                break
-                            }
-                        };
-
-                        match outbound.send_to(&buf[..header.payload_len as usize], header.addr.to_string()).await {
-                            Ok(n) => {
-                                debug!("udp copy to remote: {} bytes", n);
-                                if n == 0 {
-                                    break
-                                }
-                            }
-                            Err(e) => {
-                                error!("udp send to upstream error: {:?}", e);
+                    match outbound.send_to(&buf[..header.payload_len as usize], header.addr.to_string()).await {
+                        Ok(n) => {
+                            debug!("udp copy to remote: {} bytes", n);
+                            if n == 0 {
                                 break
                             }
                         }
+                        Err(e) => {
+                            error!("udp send to upstream error: {:?}", e);
+                            break
+                        }
                     }
-                    std::mem::drop(buf);
-                    Ok(()) as Result<()>
-                };
-                let server_to_client = async {
-                    // let mut buf = [0u8; RELAY_BUFFER_SIZE];
-                    let mut buf: StackVec<u8, RELAY_BUFFER_SIZE> = StackVec::new();
-                    buf.resize(RELAY_BUFFER_SIZE, 0)
-                        .map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
+                }
+                std::mem::drop(buf);
+                Ok(()) as Result<()>
+            };
+            let server_to_client = async {
+                // let mut buf = [0u8; RELAY_BUFFER_SIZE];
+                let mut buf: StackVec<u8, RELAY_BUFFER_SIZE> = StackVec::new();
+                buf.resize(RELAY_BUFFER_SIZE, 0)
+                    .map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
 
-                    loop {
-                        // let (len, dst) = outbound.recv_from(&mut buf).await?;
-                        //
+                loop {
+                    // let (len, dst) = outbound.recv_from(&mut buf).await?;
+                    //
+                    // if len == 0 {
+                    //     break
+                    // }
+                    // let header = UdpAssociateHeader::new(&Address::from(dst), len);
+                    // header.write_to(&mut tls_stream_writer).await?;
+                    // tls_stream_writer.write_all(&buf[..len]).await?;
+                    // debug!("udp copy to client: {} bytes", len);
+
+                    match timeout(std::time::Duration::from_secs(60), async {
+                        let (len, dst) = outbound.recv_from(&mut buf).await?;
                         // if len == 0 {
                         //     break
                         // }
-                        // let header = UdpAssociateHeader::new(&Address::from(dst), len);
-                        // header.write_to(&mut tls_stream_writer).await?;
-                        // tls_stream_writer.write_all(&buf[..len]).await?;
-                        // debug!("udp copy to client: {} bytes", len);
-
-                        match timeout(std::time::Duration::from_secs(60), async {
-                            let (len, dst) = outbound.recv_from(&mut buf).await?;
-                            // if len == 0 {
-                            //     break
-                            // }
-                            Ok((len, dst)) as Result<(usize, SocketAddr)>
-                            // (len,dst)
-                        })
-                        .await?
-                        {
-                            Ok((len, dst)) => {
-                                if len == 0 {
-                                    break
-                                }
-                                let header = UdpAssociateHeader::new(&Address::from(dst), len);
-                                header.write_to(&mut tls_stream_writer).await?;
-                                tls_stream_writer.write_all(&buf[..len]).await?;
-                                debug!("udp copy to client: {} bytes", len);
-                            }
-                            Err(e) => {
-                                error!("reading client socket timeout:{:?}", e);
+                        Ok((len, dst)) as Result<(usize, SocketAddr)>
+                        // (len,dst)
+                    })
+                    .await?
+                    {
+                        Ok((len, dst)) => {
+                            if len == 0 {
                                 break
                             }
+                            let header = UdpAssociateHeader::new(&Address::from(dst), len);
+                            header.write_to(&mut tls_stream_writer).await?;
+                            tls_stream_writer.write_all(&buf[..len]).await?;
+                            debug!("udp copy to client: {} bytes", len);
+                        }
+                        Err(e) => {
+                            error!("reading client socket timeout:{:?}", e);
+                            break
                         }
                     }
-                    tls_stream_writer.flush().await?;
-                    tls_stream_writer.close().await?;
-                    std::mem::drop(buf);
-                    Ok(()) as Result<()>
-                };
-
-                futures::pin_mut!(client_to_server);
-                futures::pin_mut!(server_to_client);
-
-                let _res = futures::future::join(client_to_server, server_to_client).await;
-                // let ret = match res {
-                //     Either::Left((Err(e), fut_right)) => {
-                //         debug!("udp copy to remote closed");
-                //         fut_right.await?;
-                //         // std::mem::drop(fut_right);
-                //         // let _ = timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
-                //         //     fut_right.await?;
-                //         //     Ok(()) as Result<()>
-                //         // })
-                //         // .await?;
-                //         Err(anyhow::anyhow!("UdpAssociate copy local to remote error: {:?}", e))?
-                //     }
-                //     Either::Right((Err(e), fut_left)) => {
-                //         debug!("udp copy to local closed");
-                //         std::mem::drop(fut_left);
-                //         // timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
-                //         //     fut_left.await;
-                //         //     Ok(()) as Result<()>
-                //         // })
-                //         //     .await;
-                //         Err(anyhow::anyhow!("UdpAssociate copy remote to local error: {:?}", e))?
-                //     }
-                //     Either::Left((Ok(_), fut_right)) => {
-                //         fut_right.await
-                //         // timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
-                //         //     fut_right.await?;
-                //         //     Ok(()) as Result<()>
-                //         // })
-                //         // .await?
-                //     }
-                //     Either::Right((Ok(_), fut_left)) => {
-                //         timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
-                //             fut_left.await?;
-                //             Ok(()) as Result<()>
-                //         })
-                //         .await?
-                //     }
-                // };
-                return Ok(())
-                // return Err(anyhow::anyhow!("{:?}", ret))?
-                // use std::net::Shutdown;
-                // tls_inner.shutdown(Shutdown::Both)?;
-                // Ok(RequestHeader::UdpAssociate(hash_buf))
-            }
-            udp_upstream(tls_stream_reader, udp_socket /* , udp_associate.clone()*/ /* &ipv6_addr */).await?;
-
-            let mut udps = udp_associate.lock().await;
-            match udps.remove(&ipv6_addr) {
-                None => {}
-                Some(mut writer) => {
-                    writer.flush().await?;
-                    writer.close().await?;
                 }
-            }
+                tls_stream_writer.flush().await?;
+                tls_stream_writer.close().await?;
+                std::mem::drop(buf);
+                Ok(()) as Result<()>
+            };
+
+            futures::pin_mut!(client_to_server);
+            futures::pin_mut!(server_to_client);
+
+            let _res = futures::future::join(client_to_server, server_to_client).await;
+            // let ret = match res {
+            //     Either::Left((Err(e), fut_right)) => {
+            //         debug!("udp copy to remote closed");
+            //         fut_right.await?;
+            //         // std::mem::drop(fut_right);
+            //         // let _ = timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
+            //         //     fut_right.await?;
+            //         //     Ok(()) as Result<()>
+            //         // })
+            //         // .await?;
+            //         Err(anyhow::anyhow!("UdpAssociate copy local to remote error: {:?}", e))?
+            //     }
+            //     Either::Right((Err(e), fut_left)) => {
+            //         debug!("udp copy to local closed");
+            //         std::mem::drop(fut_left);
+            //         // timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async{
+            //         //     fut_left.await;
+            //         //     Ok(()) as Result<()>
+            //         // })
+            //         //     .await;
+            //         Err(anyhow::anyhow!("UdpAssociate copy remote to local error: {:?}", e))?
+            //     }
+            //     Either::Left((Ok(_), fut_right)) => {
+            //         fut_right.await
+            //         // timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
+            //         //     fut_right.await?;
+            //         //     Ok(()) as Result<()>
+            //         // })
+            //         // .await?
+            //     }
+            //     Either::Right((Ok(_), fut_left)) => {
+            //         timeout(READ_TIMEOUT_WHEN_ONE_SHUTDOWN, async {
+            //             fut_left.await?;
+            //             Ok(()) as Result<()>
+            //         })
+            //         .await?
+            //     }
+            // };
+            return Ok(())
+            // return Err(anyhow::anyhow!("{:?}", ret))?
+            // use std::net::Shutdown;
+            // tls_inner.shutdown(Shutdown::Both)?;
+            // Ok(RequestHeader::UdpAssociate(hash_buf))
         }
         _ => {
             tls_stream.close().await?;

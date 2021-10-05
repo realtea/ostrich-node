@@ -30,6 +30,23 @@ use std::{
     path::Path,
     sync::Arc
 };
+use futures::channel::oneshot;
+use async_std::net::TcpStream;
+use async_std::task::JoinHandle;
+
+
+pub enum SessionMessage {
+    NewPeer(Connection),
+    KeepLive(SocketAddr),
+    DisConnected(SocketAddr)
+}
+
+pub struct Connection {
+    addr: SocketAddr,
+    task: JoinHandle<Result<()>>,
+    stream: TcpStream,
+    terminator: oneshot::Sender<bool>
+}
 
 pub const RELAY_BUFFER_SIZE: usize = 2048;
 

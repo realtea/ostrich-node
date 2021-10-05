@@ -97,29 +97,91 @@ impl Future for CopyFuture
     }
 }
 
-async fn upstream(mut tcp: &TcpStream, udp: &UdpSocket, buf: &mut StackVec<u8, RELAY_BUFFER_SIZE>) -> Poll<io::Result<bool>>{
-    // let mut buf: StackVec<u8, RELAY_BUFFER_SIZE> = StackVec::new();
-    // buf.resize(RELAY_BUFFER_SIZE, 0);
 
+async fn udp_downstream(udp_socket: Arc<UdpSocket>, udp_associate: Arc<Mutex<AssociationMap>>) -> Result<()> {
+    // let mut buf = [0u8; RELAY_BUFFER_SIZE];
+    let mut buf: StackVec<u8, RELAY_BUFFER_SIZE> = StackVec::new();
+    buf.resize(RELAY_BUFFER_SIZE, 0).map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
 
-        // error!("client_to_server never end");
-        // let header = UdpAssociateHeader::read_from(&mut tcp).await?;
-        // if header.payload_len == 0 {
+    loop {
+        // match timeout(std::time::Duration::from_secs(15), async {
+        let (len, dst) = udp_socket.recv_from(&mut buf).await?;
+        //     // if len == 0 {
+        //     //     break
+        //     // }
+        //     Ok((len, dst)) as Result<(usize, SocketAddr)>
+        //     // (len,dst)
+        // })
+        // .await?
+        // {
+        //     Ok((len, dst)) => {
+        if len == 0 {
+            break
+        }
+        let ipv6_dst = to_ipv6_address(&dst);
+        let mut udps = udp_associate.lock().await;
+        if let Some(mut write_half) = udps.get_mut(&ipv6_dst) {
+            let mut is_err: bool = false;
+            // error!("udp_downstream: associate get: {:?}",&ipv6_dst);
+            let header = UdpAssociateHeader::new(&Address::from(dst), len);
+            match header.write_to(&mut write_half).await {
+                Ok(_) => {}
+                Err(_) => {
+                    is_err = true;
+                }
+            }
+            match write_half.write_all(&buf[..len]).await {
+                Ok(_) => {}
+                Err(_) => {
+                    is_err = true;
+                }
+            }
+            debug!("udp_downstream: {} bytes", len);
+            if is_err {
+                write_half.flush().await?;
+                write_half.close().await?;
+                udps.remove(&ipv6_dst); // TODO remove Address::from
+                error!("udp_downstream remove udp associate: {:?}",&ipv6_dst);
+            }
+        }
+        // if is_err {
+        //     udps.remove(&ipv6_dst); // TODO remove Address::from
+        // }
+        // }
+        // Err(e) => {
+        //     error!("reading client socket timeout:{:?}", e);
         //     break
         // }
-        // buf.resize(header.payload_len as usize, 0)
-        //     .map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
+    }
+    // }
+    Ok(()) as Result<()>
+}
+// let ipv6_dst = to_ipv6_address(&dst);
+// let mut udps = udp_associate.lock().await;
 
-        // tcp.read_exact(&mut buf[..header.payload_len as usize]).await?;
+async fn udp_upstream<T>(
+    mut inbound: ReadHalf<T>,
+    outbound: Arc<UdpSocket> // udp_associate: Arc<Mutex<AssociationMap>> // ,ipv6_dst: &SocketAddrV6
+) -> Result<()>
+    where
+        T: AsyncRead
+{
+    let mut buf: StackVec<u8, RELAY_BUFFER_SIZE> = StackVec::new();
 
+    loop {
+        // error!("client_to_server never end");
+        let header = UdpAssociateHeader::read_from(&mut inbound).await?;
+        if header.payload_len == 0 {
+            break
+        }
+        buf.resize(header.payload_len as usize, 0)
+            .map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
+        // let dst = header.addr;
+        // tls_stream_reader.read_exact(&mut buf[..header.payload_len as usize]).await?;
+
+        // let is_err:  bool = false;
         match timeout(std::time::Duration::from_secs(60), async {
-            let header = UdpAssociateHeader::read_from(&mut tcp).await?;
-            if header.payload_len == 0 {
-                return  Poll::Ready(Ok(true))
-            }
-            buf.resize(header.payload_len as usize, 0)
-                .map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
-            tcp.read_exact(&mut buf[..header.payload_len as usize]).await?;
+            inbound.read_exact(&mut buf[..header.payload_len as usize]).await?;
             Ok(()) as Result<()>
         })
             .await
@@ -127,68 +189,40 @@ async fn upstream(mut tcp: &TcpStream, udp: &UdpSocket, buf: &mut StackVec<u8, R
             Ok(_) => {}
             Err(e) => {
                 error!("reading client socket timeout:{:?}", e);
-                return  Poll::Ready(Err(e))
+                // let mut udps = udp_associate.lock().await;
+                // match udps.remove(&ipv6_dst){
+                //     None => {}
+                //     Some(mut writer) => {writer.close().await?;}
+                // }
+                break
             }
         }
-
+        // debug!("udp_upstream: {}:{}", &ipv6_dst,&header.addr);
         match outbound.send_to(&buf[..header.payload_len as usize], header.addr.to_string()).await {
             Ok(n) => {
-                debug!("udp copy to remote: {} bytes", n);
+                debug!("udp_upstream: {} bytes", n);
+
                 if n == 0 {
-                    return  Poll::Ready(Ok(true))
+                    // let mut udps = udp_associate.lock().await;
+                    // match udps.remove(&ipv6_dst){
+                    //     None => {}
+                    //     Some(mut writer) => {writer.close().await?;}
+                    // }
+                    break
                 }
             }
             Err(e) => {
                 error!("udp send to upstream error: {:?}", e);
-                return  Poll::Ready(Err(e))
+                // let mut udps = udp_associate.lock().await;
+                // match udps.remove(&ipv6_dst){
+                //     None => {}
+                //     Some(mut writer) => {writer.close().await?;}
+                // }
+                break
             }
         }
-
+    }
     std::mem::drop(buf);
-    Poll::Ready(Ok(false))
-}
-async fn downstream(udp: &UdpSocket, mut tcp: &TcpStream, buf: &mut StackVec<u8, RELAY_BUFFER_SIZE>) -> Poll<io::Result<bool>>{
-    // let mut buf: StackVec<u8, RELAY_BUFFER_SIZE> = StackVec::new();
-        buf.resize(RELAY_BUFFER_SIZE, 0)
-        .map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
 
-
-        // let (len, dst) = outbound.recv_from(&mut buf).await?;
-        //
-        // if len == 0 {
-        //     break
-        // }
-        // let header = UdpAssociateHeader::new(&Address::from(dst), len);
-        // header.write_to(&mut tcp).await?;
-        // tcp.write_all(&buf[..len]).await?;
-        // debug!("udp copy to client: {} bytes", len);
-
-        match timeout(std::time::Duration::from_secs(60), async {
-            let (len, dst) = outbound.recv_from(&mut buf).await?;
-            // if len == 0 {
-            //     break
-            // }
-            Ok((len, dst)) as Result<(usize, SocketAddr)>
-            // (len,dst)
-        })
-            .await?
-        {
-            Ok((len, dst)) => {
-                if len == 0 {
-                    tcp.flush().await?;
-                    tcp.close().await?;
-                    return  Poll::Ready(Ok(true))
-                }
-                let header = UdpAssociateHeader::new(&Address::from(dst), len);
-                header.write_to(&mut tcp).await?;
-                tcp.write_all(&buf[..len]).await?;
-                debug!("udp copy to client: {} bytes", len);
-            }
-            Err(e) => {
-                error!("reading client socket timeout:{:?}", e);
-                return  Poll::Ready(Err(e))
-
-            }
-        }
-    Poll::Ready(Ok(false))
+    Ok(()) as Result<()>
 }

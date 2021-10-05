@@ -10,7 +10,7 @@ use async_std::task::{block_on, sleep};
 use log::{error, info};
 // use smolscale::block_on;
 use std::{fs, path::Path, time::Duration};
-use trojan::{config::set_config, generate_authenticator, ProxyBuilder};
+use trojan::{config::set_config, generate_authenticator, ProxyBuilder, SessionMessage};
 // use mimalloc::MiMalloc;
 //
 // #[global_allocator]
@@ -57,6 +57,11 @@ fn main() -> Result<()> {
     let key = config.ssl.server().unwrap().key.to_owned();
     let proxy_addr = format!("{}:{}", "0.0.0.0", local_port);
 
+    let (connection_activity_tx, connection_activity_rx): (
+        futures::channel::mpsc::Sender<SessionMessage>,
+        futures::channel::mpsc::Receiver<SessionMessage>
+    ) = futures::channel::mpsc::channel(u16::MAX as usize);
+
 
     let _ = block_on(async move {
         let proxy = ProxyBuilder::new(
@@ -65,7 +70,8 @@ fn main() -> Result<()> {
             cert,
             authenticator,
             DEFAULT_FALLBACK_ADDR.to_string(),
-            Duration::from_secs(60)
+            Duration::from_secs(60),
+            connection_activity_rx
         )
         .await?;
         let _ = Command::new("nginx").arg("-s").arg("stop").status().await?;
@@ -101,7 +107,7 @@ fn main() -> Result<()> {
         acmed_service(&acmed_config, sender).await?;
 
         info!(" === init service completed === ");
-        proxy.start(receiver.clone()).await?;
+        proxy.start(receiver, connection_activity_tx).await?;
         Ok(()) as Result<()>
     });
     Ok(())
