@@ -29,13 +29,14 @@ comfy-table = "3.0.0"
 chrono = "0.4.19"
 surf = "2.2.0"
 async-process = "1.2.0"
+glommio = {git = "https://github.com/DataDog/glommio.git"}
 #tokio = {version = "1.12.0",features = ["process"]}
 #smolscale = "0.3.16"
 #mimalloc = "0.1.26"
 #[target.'cfg(not(target_env = "msvc"))'.dependencies]
 #tikv-jemallocator = "0.4.0"
 
-#flume = "0.10.9"
+flume = "0.10.9"
 async-channel = "1.6.1"
 trojan = {path = "../trojan"}
 errors = {path = "../errors"}

@@ -1,22 +1,23 @@
 #![allow(unreachable_code)]
 use crate::{load_certs, load_keys, tcp, Address, Connection, SessionMessage, RELAY_BUFFER_SIZE};
-use async_std::{
-    future::timeout,
-    net::{TcpListener, TcpStream, UdpSocket},
-    task::{spawn}
-};
+// use async_std::{
+//     future::timeout,
+//     net::{TcpListener, TcpStream, UdpSocket},
+//     task::{spawn}
+// };
+
+use async_std::sync::Mutex;
+use async_std_resolver::{config, resolver, AsyncStdResolver};
 use async_tls::{server::TlsStream, TlsAcceptor};
 use bytes::BufMut;
 use errors::{Error, Result};
-use async_std::sync::Mutex;
-use async_std_resolver::{config, resolver, AsyncStdResolver};
-use futures::{
-    channel::oneshot,
-    io::{ WriteHalf},
-    select
-};
+use futures::{channel::oneshot, io::WriteHalf, select};
 use futures_util::{
     future::Either, io::AsyncReadExt, stream::StreamExt, AsyncRead, AsyncWrite, AsyncWriteExt, FutureExt, SinkExt
+};
+use glommio::{
+    net::{TcpListener, TcpStream, UdpSocket},
+    spawn_local
 };
 use heapless::Vec as StackVec;
 use log::{debug, error, info};
@@ -59,13 +60,16 @@ pub struct ProxyBuilder {
 
 
 impl ProxyBuilder {
-    pub async fn new(
+    pub fn new(
         addr: String, key: String, cert: String, authenticator: Vec<String>, fallback: String, time_to_live: Duration,
         mut connection_activity_rx: futures::channel::mpsc::Receiver<SessionMessage>
     ) -> Result<Self> {
-        spawn(async move {
-            let mut inter = interval(time_to_live.add(Duration::from_secs(45)));
-            inter.set_missed_tick_behavior(MissedTickBehavior::Burst);
+        spawn_local(async move {
+            // let mut inter = interval(time_to_live.add(Duration::from_secs(45)));
+            // inter.set_missed_tick_behavior(MissedTickBehavior::Burst);
+
+            use async_io::Timer;
+            let mut timer = Timer::interval(time_to_live.add(Duration::from_secs(45)));
 
             let mut endpoint: LruCache<SocketAddr, Connection> =
                 LruCache::with_expiry_duration_and_capacity(time_to_live, u16::MAX as usize);
@@ -74,7 +78,7 @@ impl ProxyBuilder {
 
             loop {
                 select! {
-                    _ = inter.tick().fuse() => {
+                    _ = timer.next().fuse() => {
                         let mut expired = endpoint
                             .notify_iter()
                             .filter_map(|entry| {
@@ -90,11 +94,11 @@ impl ProxyBuilder {
                             // if w.is_some() {
                             error!("starting to terminate task from client connection: {:?}",&w.addr);
                             std::mem::drop(w.terminator);
-                            w.stream.close().await?;
-                            let _ = w.task.await.map_err(|e|{
-                                error!("wait task exit error: {:?}",e);
-                                Error::Eor(anyhow::anyhow!("{:?}",e))
-                            })?;
+                            // w.stream.close().await?;
+                            // let _ = w.task.await.map_err(|e|{
+                            //     error!("wait task exit error: {:?}",e);
+                            //     Error::Eor(anyhow::anyhow!("{:?}",e))
+                            // })?;
                             // w.task.abort();
 
                             error!("task terminated from client connection: {:?}",&w.addr)
@@ -128,11 +132,11 @@ impl ProxyBuilder {
                                         Some(mut connection) =>{
                                             // error!("disconnected session message from {} -- {}",&addr,&connection.addr);
                                             std::mem::drop(connection.terminator);
-                                            connection.stream.close().await?;
-                                            let _= connection.task.await.map_err(|e|{
-                                                error!("wait task exit error: {:?}",e);
-                                                Error::Eor(anyhow::anyhow!("{:?}",e))
-                                            })?;
+                                            // connection.stream.close().await?;
+                                            // let _= connection.task.await.map_err(|e|{
+                                            //     error!("wait task exit error: {:?}",e);
+                                            //     Error::Eor(anyhow::anyhow!("{:?}",e))
+                                            // })?;
                                             error!("disconnected from client connection: {:?}",&connection.addr)
                                             // connection.task.abort();
                                         },
@@ -147,7 +151,8 @@ impl ProxyBuilder {
                 }
             }
             Ok(()) as Result<()>
-        });
+        })
+        .detach();
         Ok(Self { addr, key, cert, authenticator, fallback })
     }
 
@@ -172,7 +177,7 @@ impl ProxyBuilder {
         // socket.listen(128)?;
         // let listener = TcpListener::from(socket.into_tcp_listener());
 
-        let listener = TcpListener::bind(&self.addr).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+        let listener = TcpListener::bind(&self.addr).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
         info!("proxy started at: {}", self.addr);
 
         let resolver = Arc::new(
@@ -196,17 +201,17 @@ impl ProxyBuilder {
             select! {
                 incoming_stream = incoming.next().fuse() =>  {
                     // Some(incoming_stream) =>{
-                    let incoming_stream = incoming_stream.ok_or(Error::Eor(anyhow::anyhow!("got an empty incoming stream")))??;
-                    let source = incoming_stream.peer_addr()?;
+                    let incoming_stream = incoming_stream.ok_or(Error::Eor(anyhow::anyhow!("got an empty incoming stream")))?.map_err(|e|Error::Eor(anyhow::anyhow!("{:?}",e)))?;
+                    let source = incoming_stream.peer_addr().map_err(|e|Error::Eor(anyhow::anyhow!("{:?}",e)))?;
                     let (terminator_tx, terminator_rx) = oneshot::channel();
                     let authenticator = self.authenticator.clone();
                     let fallback = self.fallback.clone();
                     let resolver = resolver.clone();
                     let mut connection_activity_loop_tx = connection_activity_tx.clone();
-                    let tcp_stream = incoming_stream.clone();
+                    // let tcp_stream = incoming_stream.clone();
                     let tls_acceptor = tls_acceptor.clone();
                     let task =
-                            spawn(
+                            spawn_local(
                                 async move {
                                     let process = process_stream(
                                         tls_acceptor,
@@ -240,12 +245,12 @@ impl ProxyBuilder {
                                     }
                                     Ok(()) as Result<()>
                                 }
-                            );
+                            ).detach();
 
                         let conneccion = SessionMessage::NewPeer(Connection{
                                 addr: source,
-                                task,
-                                stream: tcp_stream,
+                                // task,
+                                // stream: tcp_stream,
                                 terminator: terminator_tx,
                         });
                         connection_activity_tx.send(conneccion).await.map_err(|e|{
@@ -274,12 +279,13 @@ impl ProxyBuilder {
 // const DEFAULT_BUFFER_SIZE: usize = 2 * 4096;
 
 async fn process_stream(
-    acceptor: TlsAcceptor, raw_stream: TcpStream, source: SocketAddr, authenticator: Vec<String>, fallback: String,
-    resolver: Arc<AsyncStdResolver>,  connection_activity_tx: futures::channel::mpsc::Sender<SessionMessage>
+    acceptor: TlsAcceptor, mut raw_stream: TcpStream, source: SocketAddr, authenticator: Vec<String>, fallback: String,
+    resolver: Arc<AsyncStdResolver>, mut connection_activity_tx: futures::channel::mpsc::Sender<SessionMessage>
 ) -> Result<()> {
     // let source = raw_stream.peer_addr().map(|addr| addr.to_string()).unwrap_or_else(|_| "".to_owned());
     //
     // debug!("new connection from {}", source);
+    // let mut raw_stream_clone = raw_stream.clone();
 
     let handshake = acceptor.accept(raw_stream).await;
 
@@ -310,6 +316,10 @@ async fn process_stream(
             }
         }
         Err(err) => {
+            connection_activity_tx.send(SessionMessage::DisConnected(source)).await.map_err(|e| {
+                log::error!("send disconnected message error: {:?}", e);
+                Error::Eor(anyhow::anyhow!("{:?}", e))
+            })?;
             error!("error handshaking: {:?} from source: {}", err, source);
             Err(Error::Eor(anyhow::anyhow!("{:?}", err)))
         }
@@ -468,8 +478,13 @@ async fn proxy(
                 TcpStream::connect(addr.to_string()).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
             debug!("connect to target: {} from source: {}", addr, source);
 
-            let copy_future =
-                tcp::CopyFuture::new(tls_stream, tcp_stream, Duration::from_secs(60 * 5), source, connection_activity_tx);
+            let copy_future = tcp::CopyFuture::new(
+                tls_stream,
+                tcp_stream,
+                Duration::from_secs(60 * 5),
+                source,
+                connection_activity_tx
+            );
             copy_future.await.map_err(|e| e)?;
         }
         CMD_UDP_ASSOCIATE => {
@@ -479,7 +494,6 @@ async fn proxy(
             // let outbound = UdpSocket::bind(SocketAddr::from(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0)))
             //     .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
             let outbound = UdpSocket::bind(SocketAddr::from(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0)))
-                .await
                 .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
             // let tls_inner = tls_stream;
 
@@ -505,25 +519,24 @@ async fn proxy(
                         std::io::Error::new(std::io::ErrorKind::WriteZero, format!("{:?}", e))
                     })?;
 
-/*                    let header = match timeout(std::time::Duration::from_secs(60), async {
-                        let header = UdpAssociateHeader::read_from(&mut tls_stream_reader).await?;
-                        if header.payload_len == 0 {
-                            return Err(anyhow::anyhow!("udp associate header reading timeout"))
-                        }
-                        buf.resize(header.payload_len as usize, 0)
-                            .map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
-                        tls_stream_reader.read_exact(&mut buf[..header.payload_len as usize]).await?;
-                        Ok(header)
-                    })
-                    .await
-                    {
-                        Ok(header) => header?,
-                        Err(e) => {
-                            error!("reading client socket timeout:{:?}", e);
-                            break
-                        }
-                    };
-*/
+                    //                    let header = match timeout(std::time::Duration::from_secs(60), async {
+                    // let header = UdpAssociateHeader::read_from(&mut tls_stream_reader).await?;
+                    // if header.payload_len == 0 {
+                    // return Err(anyhow::anyhow!("udp associate header reading timeout"))
+                    // }
+                    // buf.resize(header.payload_len as usize, 0)
+                    // .map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
+                    // tls_stream_reader.read_exact(&mut buf[..header.payload_len as usize]).await?;
+                    // Ok(header)
+                    // })
+                    // .await
+                    // {
+                    // Ok(header) => header?,
+                    // Err(e) => {
+                    // error!("reading client socket timeout:{:?}", e);
+                    // break
+                    // }
+                    // };
                     match outbound.send_to(&buf[..header.payload_len as usize], header.addr.to_string()).await {
                         Ok(n) => {
                             debug!("udp copy to remote: {} bytes", n);
@@ -547,7 +560,7 @@ async fn proxy(
                     .map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
 
                 loop {
-                    let (len, dst) = outbound.recv_from(&mut buf).await?;
+                    let (len, dst) = outbound.recv_from(&mut buf).await.map_err(|e|Error::Eor(anyhow::anyhow!("{:?}",e)))?;
 
                     if len == 0 {
                         break

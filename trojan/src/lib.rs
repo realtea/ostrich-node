@@ -15,6 +15,7 @@ use async_std_resolver::AsyncStdResolver;
 use bytes::{Buf, BufMut};
 use errors::{Error, Result};
 use futures::{channel::oneshot, AsyncRead, AsyncReadExt};
+use glommio::Task;
 use hex::encode;
 pub use proxy::*;
 use rustls::{
@@ -41,8 +42,8 @@ pub enum SessionMessage {
 
 pub struct Connection {
     addr: SocketAddr,
-    task: JoinHandle<Result<()>>,
-    stream: TcpStream,
+    // task: Task<Result<u8>>,
+    // stream: TcpStream,
     terminator: oneshot::Sender<bool>
 }
 

@@ -9,6 +9,7 @@ use async_process::Command;
 use async_std::task::{block_on, sleep};
 use log::{error, info};
 // use smolscale::block_on;
+use glommio::{CpuSet, LocalExecutor, LocalExecutorBuilder, LocalExecutorPoolBuilder, Placement};
 use std::{fs, path::Path, time::Duration};
 use trojan::{config::set_config, generate_authenticator, ProxyBuilder, SessionMessage};
 // use mimalloc::MiMalloc;
@@ -48,7 +49,9 @@ fn main() -> Result<()> {
         e
     })?;
     let renew_config = acmed_config.clone();
-    let (sender, receiver) = async_channel::bounded(1);
+
+    let cpu_nums = num_cpus::get();
+    let (sender, receiver) = async_channel::bounded(cpu_nums);
 
     let local_port = config.local_port;
     let passwd_list = config.password.to_owned();
@@ -62,53 +65,87 @@ fn main() -> Result<()> {
         futures::channel::mpsc::Receiver<SessionMessage>
     ) = futures::channel::mpsc::channel(u16::MAX as usize);
 
+    let (init_tx, init_rx) = flume::bounded(1);
 
-    let _ = block_on(async move {
-        let proxy = ProxyBuilder::new(
-            proxy_addr,
-            key,
-            cert,
-            authenticator,
-            DEFAULT_FALLBACK_ADDR.to_string(),
-            Duration::from_secs(60),
-            connection_activity_rx
-        )
-        .await?;
-        let _ = Command::new("nginx").arg("-s").arg("stop").status().await?;
-        let _ = Command::new("systemctl").arg("stop").arg("nginx").status().await;
-        let _ = Command::new("killall").arg("-e").arg("nginx").status().await;
-        // sleep(Duration::from_secs(1)).await;
 
-        let _ = Command::new("nginx").arg("-c").arg("/etc/ostrich/conf/nginx.conf").status().await?;
+    let ex = LocalExecutorBuilder::new()
+        .spawn(|| {
+            async move {
+                let _ = Command::new("nginx").arg("-s").arg("stop").status().await?;
+                let _ = Command::new("systemctl").arg("stop").arg("nginx").status().await;
+                let _ = Command::new("killall").arg("-e").arg("nginx").status().await;
+                // sleep(Duration::from_secs(1)).await;
 
-        service_init(&config, &acmed_config).await?;
-        sleep(Duration::from_secs(7)).await;
-        loop {
-            match acmed::renew::run(&renew_config) {
-                Ok(_) => {
-                    info!("tls certification updated");
-                    break
-                }
-                Err(e) => {
-                    match e {
-                        Error::AcmeLimited => break,
-                        _ => {}
+                let _ = Command::new("nginx").arg("-c").arg("/etc/ostrich/conf/nginx.conf").status().await?;
+
+                let mut tasks = vec![];
+                tasks.append(&mut service_init(&config, &acmed_config).await?);
+                sleep(Duration::from_secs(7)).await;
+                loop {
+                    match acmed::renew::run(&renew_config) {
+                        Ok(_) => {
+                            info!("tls certification updated");
+                            break
+                        }
+                        Err(e) => {
+                            match e {
+                                Error::AcmeLimited => break,
+                                _ => {}
+                            }
+                            error!("update tls certification error: {:?}", e);
+                            sleep(Duration::from_secs(60 * 60)).await;
+                            continue
+                        }
                     }
-                    error!("update tls certification error: {:?}", e);
-                    sleep(Duration::from_secs(60 * 60)).await;
-                    continue
                 }
+
+                let _ = Command::new("nginx").arg("-s").arg("stop").status().await?;
+                sleep(Duration::from_secs(1)).await;
+                let _ = Command::new("systemctl").arg("start").arg("nginx").status().await?;
+                tasks.push(acmed_service(&acmed_config, sender).await?);
+
+                init_tx.send(true).unwrap();
+
+                for task in tasks {
+                    task.await.unwrap()?;
+                }
+
+                Ok(()) as Result<()>
             }
-        }
+        })
+        .unwrap();
 
-        let _ = Command::new("nginx").arg("-s").arg("stop").status().await?;
-        sleep(Duration::from_secs(1)).await;
-        let _ = Command::new("systemctl").arg("start").arg("nginx").status().await?;
-        acmed_service(&acmed_config, sender).await?;
+    init_rx.recv().unwrap();
 
-        info!(" === init service completed === ");
-        proxy.start(receiver, connection_activity_tx).await?;
-        Ok(()) as Result<()>
-    });
+    info!(" === init service completed === ");
+
+    let proxy = ProxyBuilder::new(
+        proxy_addr,
+        key,
+        cert,
+        authenticator,
+        DEFAULT_FALLBACK_ADDR.to_string(),
+        Duration::from_secs(60),
+        connection_activity_rx
+    )?;
+    LocalExecutorPoolBuilder::new(cpu_nums)
+        .placement(Placement::MaxSpread(CpuSet::online().ok()))
+        .on_all_shards(|| {
+            async move {
+                // let id = glommio::executor().id();
+                // println!("Starting executor {}", id);
+                proxy.start(receiver, connection_activity_tx).await.unwrap();
+            }
+        })
+        .unwrap()
+        .join_all();
+
+    ex.join().unwrap();
+
+    // let ex = LocalExecutorBuilder::new().spawn(|| async move {
+    //
+    //
+    //     Ok(()) as Result<()>
+    // }).unwrap();
     Ok(())
 }
