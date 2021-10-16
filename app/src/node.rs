@@ -68,52 +68,47 @@ fn main() -> Result<()> {
     let (init_tx, init_rx) = flume::bounded(1);
 
 
-    let ex = LocalExecutorBuilder::new()
-        .spawn(|| {
-            async move {
-                let _ = Command::new("nginx").arg("-s").arg("stop").status().await?;
-                let _ = Command::new("systemctl").arg("stop").arg("nginx").status().await;
-                let _ = Command::new("killall").arg("-e").arg("nginx").status().await;
-                // sleep(Duration::from_secs(1)).await;
+    let builder = LocalExecutorBuilder::new().pin_to_cpu(0);
+    let handle = builder.name("service").spawn(|| async move {
+        let _ = Command::new("nginx").arg("-s").arg("stop").status().await?;
+        let _ = Command::new("systemctl").arg("stop").arg("nginx").status().await;
+        let _ = Command::new("killall").arg("-e").arg("nginx").status().await;
+        // sleep(Duration::from_secs(1)).await;
 
-                let _ = Command::new("nginx").arg("-c").arg("/etc/ostrich/conf/nginx.conf").status().await?;
+        let _ = Command::new("nginx").arg("-c").arg("/etc/ostrich/conf/nginx.conf").status().await?;
 
-                let mut tasks = vec![];
-                tasks.append(&mut service_init(&config, &acmed_config).await?);
-                sleep(Duration::from_secs(7)).await;
-                loop {
-                    match acmed::renew::run(&renew_config) {
-                        Ok(_) => {
-                            info!("tls certification updated");
-                            break
-                        }
-                        Err(e) => {
-                            match e {
-                                Error::AcmeLimited => break,
-                                _ => {}
-                            }
-                            error!("update tls certification error: {:?}", e);
-                            sleep(Duration::from_secs(60 * 60)).await;
-                            continue
-                        }
+        let mut tasks = vec![];
+        tasks.append(&mut service_init(&config, &acmed_config).await?);
+        sleep(Duration::from_secs(7)).await;
+        loop {
+            match acmed::renew::run(&renew_config) {
+                Ok(_) => {
+                    info!("tls certification updated");
+                    break
+                }
+                Err(e) => {
+                    match e {
+                        Error::AcmeLimited => break,
+                        _ => {}
                     }
+                    error!("update tls certification error: {:?}", e);
+                    sleep(Duration::from_secs(60 * 60)).await;
+                    continue
                 }
-
-                let _ = Command::new("nginx").arg("-s").arg("stop").status().await?;
-                sleep(Duration::from_secs(1)).await;
-                let _ = Command::new("systemctl").arg("start").arg("nginx").status().await?;
-                tasks.push(acmed_service(&acmed_config, sender).await?);
-
-                init_tx.send(true).unwrap();
-
-                for task in tasks {
-                    task.await.unwrap()?;
-                }
-
-                Ok(()) as Result<()>
             }
-        })
-        .unwrap();
+        }
+
+        let _ = Command::new("nginx").arg("-s").arg("stop").status().await?;
+        sleep(Duration::from_secs(1)).await;
+        let _ = Command::new("systemctl").arg("start").arg("nginx").status().await?;
+        tasks.push(acmed_service(&acmed_config, sender).await?);
+
+        init_tx.send(true).unwrap();
+        use futures::future::join_all;
+        join_all(tasks).await;
+
+        Ok(()) as Result<()>
+    }).unwrap();
 
     init_rx.recv().unwrap();
 
@@ -140,7 +135,7 @@ fn main() -> Result<()> {
         .unwrap()
         .join_all();
 
-    ex.join().unwrap();
+    handle.join().unwrap();
 
     // let ex = LocalExecutorBuilder::new().spawn(|| async move {
     //
