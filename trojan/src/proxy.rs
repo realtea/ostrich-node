@@ -1,5 +1,5 @@
 #![allow(unreachable_code)]
-use crate::{load_certs, load_keys, tcp, Address, Connection, SessionMessage, RELAY_BUFFER_SIZE};
+use crate::{load_certs, load_keys, tcp, Address, Connection, SessionMessage, RELAY_BUFFER_SIZE, to_ipv6_address};
 // use async_std::{
 //     future::timeout,
 //     net::{TcpListener, TcpStream, UdpSocket},
@@ -16,7 +16,7 @@ use futures_util::{
     future::Either, io::AsyncReadExt, stream::StreamExt, AsyncRead, AsyncWrite, AsyncWriteExt, FutureExt, SinkExt
 };
 use glommio::{
-    net::{TcpListener, TcpStream, UdpSocket},
+    // net::{TcpListener, TcpStream, UdpSocket},
     spawn_local
 };
 use heapless::Vec as StackVec;
@@ -30,7 +30,10 @@ use std::{
     sync::Arc,
     time::Duration
 };
-use tokio::time::{interval, MissedTickBehavior};
+use std::str::FromStr;
+use async_std::net::{TcpStream, UdpSocket,TcpListener};
+use socket2::{Domain, Socket, Type};
+
 cfg_if::cfg_if! {
     if #[cfg(wss)] {
         use ws_stream_tungstenite::WsStream as AsyncWsStream;
@@ -162,22 +165,26 @@ impl ProxyBuilder {
     ) -> Result<()> {
         // let listener = TcpListener::bind(&self.addr).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
         // let addr: SocketAddr = self.addr.parse().expect("Unable to parse socket address");
-        // let addr = SocketAddr::from_str(self.addr.as_ref())
-        //     .map_err(|e| anyhow::anyhow!("unable to convert string ip:port to SocketAddr: {:?}", e))?;
-        //
-        // let ipv6 = to_ipv6_address(&addr);
-        // let socket = Socket::new(Domain::ipv6(), Type::stream(), None)?;
-        // socket.set_only_v6(false)?;
-        // socket.set_nonblocking(true)?;
+        let addr = SocketAddr::from_str(self.addr.as_ref())
+            .map_err(|e| anyhow::anyhow!("unable to convert string ip:port to SocketAddr: {:?}", e))?;
+
+        let ipv6 = to_ipv6_address(&addr);
+        let socket = Socket::new(Domain::ipv6(), Type::stream(), None)?;
+        socket.set_only_v6(false)?;
+        socket.set_nonblocking(true)?;
         // socket.set_read_timeout(Some(Duration::from_secs(60)))?;
         // socket.set_write_timeout(Some(Duration::from_secs(60)))?;
-        // // socket.set_linger(Some(Duration::from_secs(10)))?;
-        // // socket.set_keepalive(Some(Duration::from_secs(60 )))?;
-        // socket.bind(&ipv6.into())?;
-        // socket.listen(128)?;
-        // let listener = TcpListener::from(socket.into_tcp_listener());
+        socket.set_reuse_address(true)?;
+        socket.set_reuse_port(true)?;
+        // socket.set_linger(Some(Duration::from_secs(10)))?;
+        // socket.set_keepalive(Some(Duration::from_secs(60 * 5)))?;
+        socket.bind(&ipv6.into())?;
+        socket.listen(8192)?;
+        use async_std::net::TcpListener;
 
-        let listener = TcpListener::bind(&self.addr).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+        let listener = TcpListener::from(socket.into_tcp_listener());
+
+        // let listener = TcpListener::bind(&self.addr).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
         info!("proxy started at: {}", self.addr);
 
         let resolver = Arc::new(
@@ -494,7 +501,7 @@ async fn proxy(
             // let outbound = UdpSocket::bind(SocketAddr::from(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0)))
             //     .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
             let outbound = UdpSocket::bind(SocketAddr::from(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0)))
-                .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+                .await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
             // let tls_inner = tls_stream;
 
             let mut connection_activity_loop_tx = connection_activity_tx.clone();
