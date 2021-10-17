@@ -164,6 +164,7 @@ dependencies = [
  "num_cpus",
  "once_cell",
  "pin-project-lite 0.2.7",
+ "rlimit",
  "rustls",
  "serde",
  "serde_json",

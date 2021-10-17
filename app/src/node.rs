@@ -1,6 +1,6 @@
 #![allow(unreachable_code)]
 
-use app::{log_init, DEFAULT_FALLBACK_ADDR, DEFAULT_LOG_PATH};
+use app::{log_init, DEFAULT_FALLBACK_ADDR, DEFAULT_LOG_PATH, use_max_file_limit};
 use clap::{App, Arg};
 use errors::{Error, Result};
 // use glommio::{channels::shared_channel, CpuSet, Local, LocalExecutorPoolBuilder, Placement,enclose};
@@ -67,75 +67,82 @@ fn main() -> Result<()> {
 
     let (init_tx, init_rx) = flume::bounded(1);
 
+    use_max_file_limit();
 
-    let builder = LocalExecutorBuilder::new().pin_to_cpu(0);
-    let handle = builder.name("service").spawn(|| async move {
-        let _ = Command::new("nginx").arg("-s").arg("stop").status().await?;
-        let _ = Command::new("systemctl").arg("stop").arg("nginx").status().await;
-        let _ = Command::new("killall").arg("-e").arg("nginx").status().await;
-        // sleep(Duration::from_secs(1)).await;
+    let ex = LocalExecutor::default();
+    ex.run(async {
+        let builder = LocalExecutorBuilder::new().pin_to_cpu(0);
+        let handle = builder.name("service").spawn(|| async move {
+            let _ = Command::new("nginx").arg("-s").arg("stop").status().await?;
+            let _ = Command::new("systemctl").arg("stop").arg("nginx").status().await;
+            let _ = Command::new("killall").arg("-e").arg("nginx").status().await;
+            // sleep(Duration::from_secs(1)).await;
 
-        let _ = Command::new("nginx").arg("-c").arg("/etc/ostrich/conf/nginx.conf").status().await?;
+            let _ = Command::new("nginx").arg("-c").arg("/etc/ostrich/conf/nginx.conf").status().await?;
 
-        let mut tasks = vec![];
-        tasks.append(&mut service_init(&config, &acmed_config).await?);
-        sleep(Duration::from_secs(7)).await;
-        loop {
-            match acmed::renew::run(&renew_config) {
-                Ok(_) => {
-                    info!("tls certification updated");
-                    break
-                }
-                Err(e) => {
-                    match e {
-                        Error::AcmeLimited => break,
-                        _ => {}
+            let mut tasks = vec![];
+            tasks.append(&mut service_init(&config, &acmed_config).await?);
+            sleep(Duration::from_secs(7)).await;
+            loop {
+                match acmed::renew::run(&renew_config) {
+                    Ok(_) => {
+                        info!("tls certification updated");
+                        break
                     }
-                    error!("update tls certification error: {:?}", e);
-                    sleep(Duration::from_secs(60 * 60)).await;
-                    continue
+                    Err(e) => {
+                        match e {
+                            Error::AcmeLimited => break,
+                            _ => {}
+                        }
+                        error!("update tls certification error: {:?}", e);
+                        sleep(Duration::from_secs(60 * 60)).await;
+                        continue
+                    }
                 }
             }
-        }
 
-        let _ = Command::new("nginx").arg("-s").arg("stop").status().await?;
-        sleep(Duration::from_secs(1)).await;
-        let _ = Command::new("systemctl").arg("start").arg("nginx").status().await?;
-        tasks.push(acmed_service(&acmed_config, sender).await?);
+            let _ = Command::new("nginx").arg("-s").arg("stop").status().await?;
+            sleep(Duration::from_secs(1)).await;
+            let _ = Command::new("systemctl").arg("start").arg("nginx").status().await?;
+            tasks.push(acmed_service(&acmed_config, sender).await?);
 
-        init_tx.send(true).unwrap();
-        use futures::future::join_all;
-        join_all(tasks).await;
+            init_tx.send(true).unwrap();
+            use futures::future::join_all;
+            join_all(tasks).await;
 
+            Ok(()) as Result<()>
+        }).unwrap();
+
+        init_rx.recv().unwrap();
+
+        info!(" === init service completed === ");
+
+        let proxy = ProxyBuilder::new(
+            proxy_addr,
+            key,
+            cert,
+            authenticator,
+            DEFAULT_FALLBACK_ADDR.to_string(),
+            Duration::from_secs(60),
+            connection_activity_rx
+        )?;
+        LocalExecutorPoolBuilder::new(cpu_nums)
+            .placement(Placement::MaxSpread(CpuSet::online().ok()))
+            .on_all_shards(|| {
+                async move {
+                    // let id = glommio::executor().id();
+                    // println!("Starting executor {}", id);
+                    proxy.start(receiver, connection_activity_tx).await.unwrap();
+                }
+            })
+            .unwrap()
+            .join_all();
+
+        handle.join().unwrap();
         Ok(()) as Result<()>
-    }).unwrap();
+    });
 
-    init_rx.recv().unwrap();
 
-    info!(" === init service completed === ");
-
-    let proxy = ProxyBuilder::new(
-        proxy_addr,
-        key,
-        cert,
-        authenticator,
-        DEFAULT_FALLBACK_ADDR.to_string(),
-        Duration::from_secs(60),
-        connection_activity_rx
-    )?;
-    LocalExecutorPoolBuilder::new(cpu_nums)
-        .placement(Placement::MaxSpread(CpuSet::online().ok()))
-        .on_all_shards(|| {
-            async move {
-                // let id = glommio::executor().id();
-                // println!("Starting executor {}", id);
-                proxy.start(receiver, connection_activity_tx).await.unwrap();
-            }
-        })
-        .unwrap()
-        .join_all();
-
-    handle.join().unwrap();
 
     // let ex = LocalExecutorBuilder::new().spawn(|| async move {
     //

@@ -166,13 +166,13 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
 
     tasks.push(
         spawn_local(async move {
-            let socket = UdpSocket::bind(DEFAULT_COMMAND_ADDR).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+            use async_std::net::UdpSocket;
+            let socket = UdpSocket::bind(DEFAULT_COMMAND_ADDR).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
             info!("Listening on {}", &DEFAULT_COMMAND_ADDR); // TODO
 
-            let mut buf = vec![0u8; 1024];
-            let mut data = BytesMut::new();
-
             loop {
+                let mut buf = vec![0u8; 1024];
+                let mut data = BytesMut::new();
                 // data.clear();
                 // buf.clear();
                 let (n, peer) = socket.recv_from(&mut buf).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;

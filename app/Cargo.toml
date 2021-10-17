@@ -35,7 +35,7 @@ glommio = {git = "https://github.com/DataDog/glommio.git"}
 #mimalloc = "0.1.26"
 #[target.'cfg(not(target_env = "msvc"))'.dependencies]
 #tikv-jemallocator = "0.4.0"
-
+rlimit = "0.6.2"
 flume = "0.10.9"
 async-channel = "1.6.1"
 trojan = {path = "../trojan"}
@@ -64,6 +64,6 @@ required-features = ["default"]
 #[[bin]]
 #name = "ostrich_service"
 #path = "./src/service.rs"
-#[[bin]]
-#name ="ostrich_cli"
-#path = "src/cli.rs"
+[[bin]]
+name ="ostrich_cli"
+path = "src/cli.rs"
