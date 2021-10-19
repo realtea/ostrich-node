@@ -12,7 +12,7 @@ pub fn set_config<P: AsRef<Path>>(path: P) -> Result<Config> {
     Ok(config)
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize,Clone)]
 pub struct Config {
     pub run_type: String,
     pub local_addr: String,
@@ -27,7 +27,7 @@ pub struct Config {
     pub mysql: Option<MysqlConfig>
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize,Clone)]
 pub struct TcpConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prefer_ipv4: Option<bool>,
@@ -38,7 +38,7 @@ pub struct TcpConfig {
     pub fast_open_qlen: u32
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize,Clone)]
 pub struct MysqlConfig {
     pub enabled: bool,
     pub server_addr: String,
@@ -57,7 +57,7 @@ mod ssl {
     use errors::Error;
     use std::collections::HashMap;
 
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Debug, Deserialize, Serialize,Clone)]
     pub struct Client {
         pub verify: bool,
         pub verify_hostname: bool,
@@ -71,7 +71,7 @@ mod ssl {
         pub curves: String
     }
 
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Debug, Deserialize, Serialize,Clone)]
     pub struct Server {
         pub cert: String,
         pub key: String,
@@ -89,7 +89,7 @@ mod ssl {
         pub dhparam: String
     }
 
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Debug, Deserialize, Serialize,Clone)]
     #[serde(untagged)]
     pub enum Config {
         Client(Client),

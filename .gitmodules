@@ -1,0 +1,3 @@
+[submodule "futures-rustls"]
+	path = futures-rustls
+	url = https://github.com/quininer/futures-rustls.git

@@ -5,6 +5,7 @@ mod proxy;
 mod tcp;
 // mod udp;
 mod ws;
+mod tls;
 // mod deplex;
 // mod read_buf;
 // mod util;
@@ -18,10 +19,7 @@ use futures::{channel::oneshot, AsyncRead, AsyncReadExt};
 use glommio::Task;
 use hex::encode;
 pub use proxy::*;
-use rustls::{
-    internal::pemfile::{certs, pkcs8_private_keys, rsa_private_keys},
-    Certificate, PrivateKey
-};
+
 use sha2::{Digest, Sha224};
 use std::{
     fmt,
@@ -49,7 +47,7 @@ pub struct Connection {
 
 pub const RELAY_BUFFER_SIZE: usize = 2048;
 
-pub fn load_certs(path: &Path) -> Result<Vec<Certificate>> {
+/*pub fn load_certs(path: &Path) -> Result<Vec<Certificate>> {
     certs(&mut BufReader::new(File::open(path)?)).map_err(|_| Error::Eor(anyhow!("could not find carts")))
 }
 
@@ -68,7 +66,7 @@ pub fn load_keys(path: &Path) -> Result<PrivateKey> {
     key!(pkcs8_private_keys, path);
     key!(rsa_private_keys, path);
     Err(Error::Eor(anyhow::anyhow!("invalid key")))
-}
+}*/
 
 pub fn generate_authenticator(passwd_list: &Vec<String>) -> Result<Vec<String>> {
     let mut authenticator = Vec::with_capacity(passwd_list.len());

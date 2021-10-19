@@ -9,7 +9,7 @@ use async_process::Command;
 use async_std::task::{block_on, sleep};
 use log::{error, info};
 // use smolscale::block_on;
-use glommio::{CpuSet, LocalExecutor, LocalExecutorBuilder, LocalExecutorPoolBuilder, Placement};
+use glommio::{CpuSet, LocalExecutor, LocalExecutorBuilder, LocalExecutorPoolBuilder, Placement,   enclose,};
 use std::{fs, path::Path, time::Duration};
 use trojan::{config::set_config, generate_authenticator, ProxyBuilder, SessionMessage};
 // use mimalloc::MiMalloc;
@@ -126,15 +126,16 @@ fn main() -> Result<()> {
             Duration::from_secs(60),
             connection_activity_rx
         )?;
+        let config = set_config(config_path)?;
         LocalExecutorPoolBuilder::new(cpu_nums)
             .placement(Placement::MaxSpread(CpuSet::online().ok()))
-            .on_all_shards(|| {
+            .on_all_shards(enclose!((config) move|| {
                 async move {
                     // let id = glommio::executor().id();
                     // println!("Starting executor {}", id);
-                    proxy.start(receiver, connection_activity_tx).await.unwrap();
+                    proxy.start(&config,receiver, connection_activity_tx).await.unwrap();
                 }
-            })
+            }))
             .unwrap()
             .join_all();
 
