@@ -29,7 +29,8 @@ comfy-table = "3.0.0"
 chrono = "0.4.19"
 surf = "2.2.0"
 async-process = "1.2.0"
-glommio = {git = "https://github.com/DataDog/glommio.git"}
+#glommio = {git = "https://github.com/thirstycrow/glommio.git",branch = "optimize_network_io"}
+glommio = {git = "https://github.com/DataDog/glommio.git",branch = "master"}
 #tokio = {version = "1.12.0",features = ["process"]}
 #smolscale = "0.3.16"
 #mimalloc = "0.1.26"

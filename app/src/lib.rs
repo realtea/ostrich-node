@@ -243,6 +243,6 @@ pub fn use_max_file_limit() {
 
     match rlimit::utils::increase_nofile_limit(DFLT_MAX_N_FILES) {
         Ok(n) => debug!("Increased process file limit to {}", n),
-        Err(e) => warn!("Error while increasing file limit: {}", e),
+        Err(e) => warn!("Error while increasing file limit: {}", e)
     }
 }

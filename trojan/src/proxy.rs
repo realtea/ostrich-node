@@ -1,5 +1,5 @@
 #![allow(unreachable_code)]
-use crate::{tcp, Address, Connection, SessionMessage, RELAY_BUFFER_SIZE, to_ipv6_address};
+use crate::{tcp, to_ipv6_address, Address, Connection, SessionMessage, RELAY_BUFFER_SIZE};
 // use async_std::{
 //     future::timeout,
 //     net::{TcpListener, TcpStream, UdpSocket},
@@ -9,15 +9,18 @@ use crate::{tcp, Address, Connection, SessionMessage, RELAY_BUFFER_SIZE, to_ipv6
 // use async_std::sync::Mutex;
 use async_std_resolver::{config, resolver, AsyncStdResolver};
 // use async_tls::{server::TlsStream, TlsAcceptor};
+use crate::{config::Config, tls::make_config};
 use bytes::BufMut;
 use errors::{Error, Result};
 use futures::{channel::oneshot, io::WriteHalf, select};
+use futures_rustls::{server::TlsStream, TlsAcceptor};
 use futures_util::{
     future::Either, io::AsyncReadExt, stream::StreamExt, AsyncRead, AsyncWrite, AsyncWriteExt, FutureExt, SinkExt
 };
 use glommio::{
     net::{TcpListener, TcpStream, UdpSocket},
-    spawn_local
+    spawn_local,
+    task::JoinHandle
 };
 use heapless::Vec as StackVec;
 use log::{debug, error, info};
@@ -26,13 +29,10 @@ use std::{
     io,
     net::{Ipv6Addr, SocketAddr, SocketAddrV6},
     ops::Add,
+    str::FromStr,
     sync::Arc,
     time::Duration
 };
-use std::str::FromStr;
-use futures_rustls::{TlsAcceptor, server::TlsStream};
-use crate::config::Config;
-use crate::tls::make_config;
 // use async_std::net::{TcpStream, UdpSocket,TcpListener};
 // use socket2::{Domain, Socket, Type};
 
@@ -61,11 +61,38 @@ pub struct ProxyBuilder {
 
 
 impl ProxyBuilder {
-    pub fn new(
-        addr: String, key: String, cert: String, authenticator: Vec<String>, fallback: String, time_to_live: Duration,
-        mut connection_activity_rx: futures::channel::mpsc::Receiver<SessionMessage>
-    ) -> Result<Self> {
-        spawn_local(async move {
+    pub fn new(addr: String, key: String, cert: String, authenticator: Vec<String>, fallback: String) -> Result<Self> {
+        Ok(Self { addr, key, cert, authenticator, fallback })
+    }
+
+    pub async fn start(
+        self, config: &Config, mut receiver: async_channel::Receiver<bool>, time_to_live: Duration
+    ) -> Result<()> {
+        // let listener = TcpListener::bind(&self.addr).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+        // let addr: SocketAddr = self.addr.parse().expect("Unable to parse socket address");
+        // let addr = SocketAddr::from_str(self.addr.as_ref())
+        //     .map_err(|e| anyhow::anyhow!("unable to convert string ip:port to SocketAddr: {:?}", e))?;
+        //
+        // let ipv6 = to_ipv6_address(&addr);
+        // let socket = Socket::new(Domain::ipv6(), Type::stream(), None)?;
+        // socket.set_only_v6(false)?;
+        // socket.set_nonblocking(true)?;
+        // // socket.set_read_timeout(Some(Duration::from_secs(60)))?;
+        // // socket.set_write_timeout(Some(Duration::from_secs(60)))?;
+        // socket.set_reuse_address(true)?;
+        // socket.set_reuse_port(true)?;
+        // // socket.set_linger(Some(Duration::from_secs(10)))?;
+        // // socket.set_keepalive(Some(Duration::from_secs(60 * 5)))?;
+        // socket.bind(&ipv6.into())?;
+        // socket.listen(8192)?;
+        // use async_std::net::TcpListener;
+        //
+        // let listener = TcpListener::from(socket.into_tcp_listener());
+        let (mut connection_activity_tx, mut connection_activity_rx): (
+            futures::channel::mpsc::Sender<SessionMessage>,
+            futures::channel::mpsc::Receiver<SessionMessage>
+        ) = futures::channel::mpsc::channel(u32::MAX as usize);
+        let session_task = spawn_local(async move {
             // let mut inter = interval(time_to_live.add(Duration::from_secs(45)));
             // inter.set_missed_tick_behavior(MissedTickBehavior::Burst);
 
@@ -101,7 +128,6 @@ impl ProxyBuilder {
                             //     Error::Eor(anyhow::anyhow!("{:?}",e))
                             // })?;
                             // w.task.abort();
-
                             error!("task terminated from client connection: {:?}",&w.addr)
                             // }
                         }
@@ -154,36 +180,6 @@ impl ProxyBuilder {
             Ok(()) as Result<()>
         })
         .detach();
-        Ok(Self { addr, key, cert, authenticator, fallback })
-    }
-
-    pub async fn start(
-        self,
-        config: &Config,
-        mut receiver: async_channel::Receiver<bool>,
-        mut connection_activity_tx: futures::channel::mpsc::Sender<SessionMessage>
-    ) -> Result<()> {
-        // let listener = TcpListener::bind(&self.addr).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
-        // let addr: SocketAddr = self.addr.parse().expect("Unable to parse socket address");
-        // let addr = SocketAddr::from_str(self.addr.as_ref())
-        //     .map_err(|e| anyhow::anyhow!("unable to convert string ip:port to SocketAddr: {:?}", e))?;
-        //
-        // let ipv6 = to_ipv6_address(&addr);
-        // let socket = Socket::new(Domain::ipv6(), Type::stream(), None)?;
-        // socket.set_only_v6(false)?;
-        // socket.set_nonblocking(true)?;
-        // // socket.set_read_timeout(Some(Duration::from_secs(60)))?;
-        // // socket.set_write_timeout(Some(Duration::from_secs(60)))?;
-        // socket.set_reuse_address(true)?;
-        // socket.set_reuse_port(true)?;
-        // // socket.set_linger(Some(Duration::from_secs(10)))?;
-        // // socket.set_keepalive(Some(Duration::from_secs(60 * 5)))?;
-        // socket.bind(&ipv6.into())?;
-        // socket.listen(8192)?;
-        // use async_std::net::TcpListener;
-        //
-        // let listener = TcpListener::from(socket.into_tcp_listener());
-
         let listener = TcpListener::bind(&self.addr).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
         info!("proxy started at: {}", self.addr);
 
@@ -193,8 +189,6 @@ impl ProxyBuilder {
                 .await
                 .expect("failed to connect resolver")
         );
-
-
         let mut tls_config = make_config(config);
 
         let mut tls_acceptor = TlsAcceptor::from(Arc::new(tls_config));
@@ -264,12 +258,13 @@ impl ProxyBuilder {
                         })?;
                     },
                 _ = receiver.next().fuse() =>{
-                    tls_config = make_config(config);;
+                    tls_config = make_config(config);
                     tls_acceptor = TlsAcceptor::from(Arc::new(tls_config));
                     info!("tls config has been reloaded");
                 }
             }
         }
+        session_task.await.unwrap();
         Ok(())
     }
 }

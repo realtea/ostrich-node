@@ -4,8 +4,8 @@ pub mod config;
 mod proxy;
 mod tcp;
 // mod udp;
-mod ws;
 mod tls;
+mod ws;
 // mod deplex;
 // mod read_buf;
 // mod util;
@@ -31,13 +31,13 @@ use std::{
     sync::Arc
 };
 
-
+#[derive(Debug)]
 pub enum SessionMessage {
     NewPeer(Connection),
     KeepLive(SocketAddr),
     DisConnected(SocketAddr)
 }
-
+#[derive(Debug)]
 pub struct Connection {
     addr: SocketAddr,
     // task: Task<Result<u8>>,
@@ -47,26 +47,26 @@ pub struct Connection {
 
 pub const RELAY_BUFFER_SIZE: usize = 2048;
 
-/*pub fn load_certs(path: &Path) -> Result<Vec<Certificate>> {
-    certs(&mut BufReader::new(File::open(path)?)).map_err(|_| Error::Eor(anyhow!("could not find carts")))
-}
-
-#[macro_export]
-macro_rules! key {
-    ($e:expr,$p:ident) => {
-        let reader = &mut BufReader::new(File::open($p)?);
-        if let Ok(mut keys) = $e(reader) {
-            if !keys.is_empty() {
-                return Ok(keys.remove(0))
-            }
-        }
-    };
-}
-pub fn load_keys(path: &Path) -> Result<PrivateKey> {
-    key!(pkcs8_private_keys, path);
-    key!(rsa_private_keys, path);
-    Err(Error::Eor(anyhow::anyhow!("invalid key")))
-}*/
+// pub fn load_certs(path: &Path) -> Result<Vec<Certificate>> {
+// certs(&mut BufReader::new(File::open(path)?)).map_err(|_| Error::Eor(anyhow!("could not find carts")))
+// }
+//
+// #[macro_export]
+// macro_rules! key {
+// ($e:expr,$p:ident) => {
+// let reader = &mut BufReader::new(File::open($p)?);
+// if let Ok(mut keys) = $e(reader) {
+// if !keys.is_empty() {
+// return Ok(keys.remove(0))
+// }
+// }
+// };
+// }
+// pub fn load_keys(path: &Path) -> Result<PrivateKey> {
+// key!(pkcs8_private_keys, path);
+// key!(rsa_private_keys, path);
+// Err(Error::Eor(anyhow::anyhow!("invalid key")))
+// }
 
 pub fn generate_authenticator(passwd_list: &Vec<String>) -> Result<Vec<String>> {
     let mut authenticator = Vec::with_capacity(passwd_list.len());

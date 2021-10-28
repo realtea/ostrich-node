@@ -167,7 +167,8 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
     tasks.push(
         spawn_local(async move {
             use async_std::net::UdpSocket;
-            let socket = UdpSocket::bind(DEFAULT_COMMAND_ADDR).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+            let socket =
+                UdpSocket::bind(DEFAULT_COMMAND_ADDR).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
             info!("Listening on {}", &DEFAULT_COMMAND_ADDR); // TODO
 
             loop {
@@ -258,10 +259,12 @@ pub async fn acmed_service(
                 sleep(Duration::from_secs(7)).await;
 
                 info!("start sending reload signal");
-                sender.send(true).await.map_err(|e| {
-                    error!("send reload signal error: {:?}", e);
-                    Error::Eor(anyhow::anyhow!("{:?}", e))
-                })?;
+                for _ in 0..sender.capacity().unwrap_or(num_cpus::get()) {
+                    sender.send(true).await.map_err(|e| {
+                        error!("send reload signal error: {:?}", e);
+                        Error::Eor(anyhow::anyhow!("{:?}", e))
+                    })?;
+                }
                 info!("reload signal has been sent")
             }
         }

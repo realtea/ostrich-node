@@ -3,7 +3,7 @@ use app::DEFAULT_COMMAND_ADDR;
 use async_std::future::timeout;
 use async_std::{net::UdpSocket, task};
 use bytes::BytesMut;
-use clap::{App,  Arg};
+use clap::{App, Arg};
 use comfy_table::Table;
 use command::{build_cmd, frame::Frame};
 use errors::{Error, Result};
