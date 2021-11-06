@@ -19,7 +19,7 @@ use service::{
     http::tide::serve_register
 };
 // use smolscale::spawn;
-use glommio::{net::UdpSocket, spawn_local, task::JoinHandle, timer::sleep};
+use glommio::{ spawn_local, task::JoinHandle, timer::sleep};
 use std::{env, fs, ops::Sub, sync::Arc, time::Duration};
 use trojan::config::Config;
 

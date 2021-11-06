@@ -1,8 +1,7 @@
 use crate::config::Config;
 use rustls::{
     self,
-    server::{AllowAnyAnonymousOrAuthenticatedClient, AllowAnyAuthenticatedClient, NoClientAuth},
-    RootCertStore
+    server::{ NoClientAuth},
 };
 use rustls_pemfile;
 use std::{

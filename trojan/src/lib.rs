@@ -10,13 +10,12 @@ mod ws;
 // mod read_buf;
 // mod util;
 
-use anyhow::anyhow;
-use async_std::{net::TcpStream, task::JoinHandle};
+
 use async_std_resolver::AsyncStdResolver;
 use bytes::{Buf, BufMut};
 use errors::{Error, Result};
 use futures::{channel::oneshot, AsyncRead, AsyncReadExt};
-use glommio::Task;
+
 use hex::encode;
 pub use proxy::*;
 
@@ -24,10 +23,10 @@ use sha2::{Digest, Sha224};
 use std::{
     fmt,
     fmt::{Debug, Formatter},
-    fs::File,
-    io::{BufReader, Cursor},
+
+    io::{Cursor},
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
-    path::Path,
+
     sync::Arc
 };
 

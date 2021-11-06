@@ -1,5 +1,5 @@
 #![allow(unreachable_code)]
-use crate::{tcp, to_ipv6_address, Address, Connection, SessionMessage, RELAY_BUFFER_SIZE};
+use crate::{tcp,  Address, Connection, SessionMessage, RELAY_BUFFER_SIZE};
 // use async_std::{
 //     future::timeout,
 //     net::{TcpListener, TcpStream, UdpSocket},
@@ -12,7 +12,7 @@ use async_std_resolver::{config, resolver, AsyncStdResolver};
 use crate::{config::Config, tls::make_config};
 use bytes::BufMut;
 use errors::{Error, Result};
-use futures::{channel::oneshot, io::WriteHalf, select};
+use futures::{channel::oneshot, select};
 use futures_rustls::{server::TlsStream, TlsAcceptor};
 use futures_util::{
     future::Either, io::AsyncReadExt, stream::StreamExt, AsyncRead, AsyncWrite, AsyncWriteExt, FutureExt, SinkExt
@@ -20,16 +20,13 @@ use futures_util::{
 use glommio::{
     net::{TcpListener, TcpStream, UdpSocket},
     spawn_local,
-    task::JoinHandle
 };
 use heapless::Vec as StackVec;
 use log::{debug, error, info};
 use lru_time_cache::{LruCache, TimedEntry};
 use std::{
-    io,
     net::{Ipv6Addr, SocketAddr, SocketAddrV6},
     ops::Add,
-    str::FromStr,
     sync::Arc,
     time::Duration
 };
@@ -44,7 +41,7 @@ cfg_if::cfg_if! {
     }
 }
 // use futures_lite::AsyncWriteExt;
-// use glommio::{
+// use glommio-raw::{
 //     channels::shared_channel::{SharedReceiver, SharedSender},
 //     net::{TcpListener, TcpStream, UdpSocket},
 //     Local
@@ -53,16 +50,16 @@ cfg_if::cfg_if! {
 #[derive(Clone)]
 pub struct ProxyBuilder {
     addr: String,
-    key: String,
-    cert: String,
+    // key: String,
+    // cert: String,
     authenticator: Vec<String>,
     fallback: String
 }
 
 
 impl ProxyBuilder {
-    pub fn new(addr: String, key: String, cert: String, authenticator: Vec<String>, fallback: String) -> Result<Self> {
-        Ok(Self { addr, key, cert, authenticator, fallback })
+    pub fn new(addr: String, authenticator: Vec<String>, fallback: String) -> Result<Self> {
+        Ok(Self { addr, authenticator, fallback })
     }
 
     pub async fn start(
@@ -118,7 +115,7 @@ impl ProxyBuilder {
                             .collect::<Vec<_>>();
                         let remains = endpoint.len();
                         error!("expired connections  num: {}",expired.len());
-                        while let Some((_k,  mut w)) = expired.pop() {
+                        while let Some((_k,   w)) = expired.pop() {
                             // if w.is_some() {
                             error!("starting to terminate task from client connection: {:?}",&w.addr);
                             std::mem::drop(w.terminator);
@@ -134,45 +131,47 @@ impl ProxyBuilder {
                         error!("connections remained num: {}",remains);
                     },
                     session =  connection_activity_rx.next().fuse() =>{
-                        if session.is_some(){
-                        let session = session.unwrap();
-                            match session {
-                                NewPeer(connection) => {
-                                    if endpoint.contains_key(&connection.addr){
-                                        endpoint.get(&connection.addr);
-                                    }else {
-                                        endpoint.insert(connection.addr, connection);
-                                    }
-                                },
-                                KeepLive(addr)=>{
-                                      match endpoint.get(&addr){
-                                        Some(_connection) =>{
-                                            // error!("keepalive session message from {} -- {}",&addr,&connection.addr)
-                                        },
-                                        None =>{
-                                            error!("keepalive session message invalid {}",&addr)
+                        match  session{
+                            Some(session) =>{
+                                match session {
+                                    NewPeer(connection) => {
+                                        if endpoint.contains_key(&connection.addr){
+                                            endpoint.get(&connection.addr);
+                                        }else {
+                                            endpoint.insert(connection.addr, connection);
                                         }
-                                    }
-                                },
-                                DisConnected(addr)=>{
-                                      match endpoint.remove(&addr){
-                                        Some(mut connection) =>{
-                                            // error!("disconnected session message from {} -- {}",&addr,&connection.addr);
-                                            std::mem::drop(connection.terminator);
-                                            // connection.stream.close().await?;
-                                            // let _= connection.task.await.map_err(|e|{
-                                            //     error!("wait task exit error: {:?}",e);
-                                            //     Error::Eor(anyhow::anyhow!("{:?}",e))
-                                            // })?;
-                                            error!("disconnected from client connection: {:?}",&connection.addr)
-                                            // connection.task.abort();
-                                        },
-                                        None =>{
-                                            error!("disconnected session message invalid {}",&addr)
+                                    },
+                                    KeepLive(addr)=>{
+                                          match endpoint.get(&addr){
+                                            Some(_connection) =>{
+                                                // error!("keepalive session message from {} -- {}",&addr,&connection.addr)
+                                            },
+                                            None =>{
+                                                error!("keepalive session message invalid {}",&addr)
+                                            }
+                                        }
+                                    },
+                                    DisConnected(addr)=>{
+                                          match endpoint.remove(&addr){
+                                            Some( connection) =>{
+                                                // error!("disconnected session message from {} -- {}",&addr,&connection.addr);
+                                                std::mem::drop(connection.terminator);
+                                                // connection.stream.close().await?;
+                                                // let _= connection.task.await.map_err(|e|{
+                                                //     error!("wait task exit error: {:?}",e);
+                                                //     Error::Eor(anyhow::anyhow!("{:?}",e))
+                                                // })?;
+                                                error!("disconnected from client connection: {:?}",&connection.addr)
+                                                // connection.task.abort();
+                                            },
+                                            None =>{
+                                                error!("disconnected session message invalid {}",&addr)
+                                            }
                                         }
                                     }
                                 }
-                            }
+                            },
+                            None =>{}
                         }
                     }
                 }
@@ -180,9 +179,11 @@ impl ProxyBuilder {
             Ok(()) as Result<()>
         })
         .detach();
-        let listener = TcpListener::bind(&self.addr).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+        let listener = TcpListener::bind(&self.addr).map_err(|e| {
+            error!("{}", e);
+            Error::Eor(anyhow::anyhow!("#1 {:?}", e))
+        })?;
         info!("proxy started at: {}", self.addr);
-
         let resolver = Arc::new(
             // for cloudflare dns, there is an issue: error notifying wait, possible future leak: TrySendError
             resolver(config::ResolverConfig::google(), config::ResolverOpts::default())
@@ -197,66 +198,83 @@ impl ProxyBuilder {
 
         loop {
             // let mut receiver = receiver.clone();
-            select! {
+            select!{
                 incoming_stream = incoming.next().fuse() =>  {
                     // Some(incoming_stream) =>{
-                    let incoming_stream = incoming_stream.ok_or(Error::Eor(anyhow::anyhow!("got an empty incoming stream")))?.map_err(|e|Error::Eor(anyhow::anyhow!("{:?}",e)))?;
-                    let source = incoming_stream.peer_addr().map_err(|e|Error::Eor(anyhow::anyhow!("{:?}",e)))?;
-                    let (terminator_tx, terminator_rx) = oneshot::channel();
-                    let authenticator = self.authenticator.clone();
-                    let fallback = self.fallback.clone();
-                    let resolver = resolver.clone();
-                    let mut connection_activity_loop_tx = connection_activity_tx.clone();
-                    // let tcp_stream = incoming_stream.clone();
-                    let tls_acceptor = tls_acceptor.clone();
-                    let task =
-                            spawn_local(
-                                async move {
-                                    let process = process_stream(
-                                        tls_acceptor,
-                                        incoming_stream,
-                                        source,
-                                        authenticator,
-                                        fallback,
-                                        resolver,
-                                        connection_activity_loop_tx.clone()
-                                    );
-                                    let terminator = async {
-                                        terminator_rx.await.map_err(|e|{
-                                            error!("terminator received: {:?}",e);
-                                            Error::Eor(anyhow::anyhow!("{:?}",e))
-                                        })?;
-                                        Ok(()) as Result<()>
-                                    };
+                    match incoming_stream.ok_or(Error::Eor(anyhow::anyhow!("got an empty incoming stream")))?{
+                        Ok(incoming_stream)=>{
+                                match incoming_stream.peer_addr(){
+                                Ok(source) => {
+                                    let (terminator_tx, terminator_rx) = oneshot::channel();
+                                    let authenticator = self.authenticator.clone();
+                                    let fallback = self.fallback.clone();
+                                    let resolver = resolver.clone();
+                                    let mut connection_activity_loop_tx = connection_activity_tx.clone();
+                                    // let tcp_stream = incoming_stream.clone();
+                                    let tls_acceptor = tls_acceptor.clone();
+                                    // let task =
+                                        spawn_local(
+                                            async move {
+                                                let process = process_stream(
+                                                    tls_acceptor,
+                                                    incoming_stream,
+                                                    source,
+                                                    authenticator,
+                                                    fallback,
+                                                    resolver,
+                                                    connection_activity_loop_tx.clone()
+                                                );
+                                                let terminator = async {
+                                                    terminator_rx.await.map_err(|e|{
+                                                        error!("terminator received: {:?}",e);
+                                                        Error::Eor(anyhow::anyhow!("#4 {:?}",e))
+                                                    })?;
+                                                    Ok(()) as Result<()>
+                                                };
 
-                                    futures::pin_mut!(terminator);
-                                    futures::pin_mut!(process);
+                                                futures::pin_mut!(terminator);
+                                                futures::pin_mut!(process);
 
-                                    match futures::future::select(process, terminator).await{
-                                        Either::Left(_) => {
-                                            connection_activity_loop_tx.send(SessionMessage::DisConnected(source)).await.map_err(|e| {
-                                            log::error!("send disconnected message error: {:?}", e);
-                                            Error::Eor(anyhow::anyhow!("{:?}", e))
-                                            })?;
-                                            error!("task exit from client connection processor: {:}",&source)
-                                        },
-                                        Either::Right(_) => {error!("task exit from client connection terminator: {:}",&source)},
+                                                match futures::future::select(process, terminator).await{
+                                                    Either::Left(_) => {
+                                                        connection_activity_loop_tx.send(SessionMessage::DisConnected(source)).await.map_err(|e| {
+                                                            log::error!("send disconnected message error: {:?}", e);
+                                                            Error::Eor(anyhow::anyhow!("#5 {:?}", e))
+                                                        })?;
+                                                        error!("task exit from client connection processor: {:}",&source)
+                                                    },
+                                                    Either::Right(_) => {error!("task exit from client connection terminator: {:}",&source)},
+                                                }
+                                                Ok(()) as Result<()>
+                                            }
+                                        ).detach();
+
+                                    let conneccion = SessionMessage::NewPeer(Connection{
+                                        addr: source,
+                                        // task,
+                                        // stream: tcp_stream,
+                                        terminator: terminator_tx,
+                                    });
+                                    match connection_activity_tx.send(conneccion).await{
+                                        Ok(_) =>{},
+                                        Err(e) =>{
+                                            error!("##2 {}",e);
+                                            continue
+                                        }
                                     }
-                                    Ok(()) as Result<()>
+                                },
+                                Err(e) =>{
+                                    error!("##1 {}",e);
+                                    continue
                                 }
-                            ).detach();
-
-                        let conneccion = SessionMessage::NewPeer(Connection{
-                                addr: source,
-                                // task,
-                                // stream: tcp_stream,
-                                terminator: terminator_tx,
-                        });
-                        connection_activity_tx.send(conneccion).await.map_err(|e|{
-                            error!("{}",e);
-                            Error::Eor(anyhow::anyhow!("{:?}",e))
-                        })?;
-                    },
+                            }
+                        },
+                        Err(e)=>{
+                           error!("##0 {}",e);
+                            continue
+                        }
+                    }
+                },
                 _ = receiver.next().fuse() =>{
                     tls_config = make_config(config);
                     tls_acceptor = TlsAcceptor::from(Arc::new(tls_config));
@@ -275,8 +293,8 @@ impl ProxyBuilder {
 // const DEFAULT_BUFFER_SIZE: usize = 2 * 4096;
 
 async fn process_stream(
-    acceptor: TlsAcceptor, mut raw_stream: TcpStream, source: SocketAddr, authenticator: Vec<String>, fallback: String,
-    resolver: Arc<AsyncStdResolver>, mut connection_activity_tx: futures::channel::mpsc::Sender<SessionMessage>
+    acceptor: TlsAcceptor,  raw_stream: TcpStream, source: SocketAddr, authenticator: Vec<String>, fallback: String,
+    resolver: Arc<AsyncStdResolver>,  connection_activity_tx: futures::channel::mpsc::Sender<SessionMessage>
 ) -> Result<()> {
     // let source = raw_stream.peer_addr().map(|addr| addr.to_string()).unwrap_or_else(|_| "".to_owned());
     //
@@ -306,18 +324,33 @@ async fn process_stream(
             match proxy(inner_stream, source, authenticator, fallback, resolver, connection_activity_tx).await {
                 Ok(_) => Ok(()),
                 Err(err) => {
-                    error!("error processing tls: {:?} from source: {}", err, source);
-                    Err(err)
+                    match err {
+                        Error::IoError(ref e) => {
+                            error!("error processing tls: {:?} from source: {}", e, source);
+                            if e.kind() == std::io::ErrorKind::NotConnected {
+                                return Ok(())
+                            }
+                            Err(err)
+                        }
+                        Error::Eor(_) => {
+                            error!("error processing tls: {:?} from source: {}", err, source);
+                            Err(err)
+                        }
+                        _ => {
+                            error!("error processing tls: {:?} from source: {}", err, source);
+                            Err(err)
+                        }
+                    }
                 }
             }
         }
         Err(err) => {
-            connection_activity_tx.send(SessionMessage::DisConnected(source)).await.map_err(|e| {
-                log::error!("send disconnected message error: {:?}", e);
-                Error::Eor(anyhow::anyhow!("{:?}", e))
-            })?;
+            //            connection_activity_tx.send(SessionMessage::DisConnected(source)).await.map_err(|e| {
+            // log::error!("send disconnected message error: {:?}", e);
+            // Error::Eor(anyhow::anyhow!("{:?}", e))
+            // })?;
             error!("error handshaking: {:?} from source: {}", err, source);
-            Err(Error::Eor(anyhow::anyhow!("{:?}", err)))
+            Err(Error::Eor(anyhow::anyhow!("#7 {:?}", err)))
         }
     }
 }
@@ -400,7 +433,10 @@ async fn redirect_fallback<#[cfg(feature = "wss")] S: AsyncRead + AsyncWrite + U
     #[cfg(feature = "wss")] mut tls_stream: WsStream<S>,
     buf: &[u8]
 ) -> Result<()> {
-    let mut tcp_stream = TcpStream::connect(target).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+    let mut tcp_stream = TcpStream::connect(target).await.map_err(|e| {
+        error!("{}", e);
+        Error::Eor(anyhow::anyhow!("#8 {:?}", e))
+    })?;
 
     debug!("connect to fallback: {}", target);
     tcp_stream.write_all(buf).await?;
@@ -416,7 +452,7 @@ async fn redirect_fallback<#[cfg(feature = "wss")] S: AsyncRead + AsyncWrite + U
 async fn proxy(
     #[cfg(not(feature = "wss"))] mut tls_stream: TlsStream<TcpStream>,
     #[cfg(feature = "wss")] mut tls_stream: WsStream<S>, source: SocketAddr, authenticator: Vec<String>,
-    fallback: String, _resolver: Arc<AsyncStdResolver>,
+    fallback: String, resolver: Arc<AsyncStdResolver>,
     mut connection_activity_tx: futures::channel::mpsc::Sender<SessionMessage>
 ) -> Result<()> {
     let mut passwd_buf: StackVec<u8, HASH_STR_LEN> = StackVec::new();
@@ -470,8 +506,10 @@ async fn proxy(
             // socket.set_nonblocking(true)?;
             // let tcp_stream = TcpStream::from(socket.into_tcp_stream());
             // error!("after {:?}", &socket_addr);
-            let tcp_stream =
-                TcpStream::connect(addr.to_string()).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+            let tcp_stream = TcpStream::connect(addr.to_string()).await.map_err(|e| {
+                error!("{}", e);
+                Error::Eor(anyhow::anyhow!("#9 {:?}", e))
+            })?;
             debug!("connect to target: {} from source: {}", addr, source);
 
             let copy_future = tcp::CopyFuture::new(
@@ -490,7 +528,10 @@ async fn proxy(
             // let outbound = UdpSocket::bind(SocketAddr::from(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0)))
             //     .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
             let outbound = UdpSocket::bind(SocketAddr::from(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0)))
-                .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+                .map_err(|e| {
+                    error!("{}", e);
+                    Error::Eor(anyhow::anyhow!("#10 {:?}", e))
+                })?;
             // let tls_inner = tls_stream;
 
             let mut connection_activity_loop_tx = connection_activity_tx.clone();
@@ -533,7 +574,8 @@ async fn proxy(
                     // break
                     // }
                     // };
-                    match outbound.send_to(&buf[..header.payload_len as usize], header.addr.to_string()).await {
+                    let ipv6_addr = header.addr.to_ipv6(&resolver).await?;
+                    match outbound.send_to(&buf[..header.payload_len as usize], ipv6_addr).await {
                         Ok(n) => {
                             debug!("udp copy to remote: {} bytes", n);
                             if n == 0 {
@@ -556,7 +598,10 @@ async fn proxy(
                     .map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
 
                 loop {
-                    let (len, dst) = outbound.recv_from(&mut buf).await.map_err(|e|Error::Eor(anyhow::anyhow!("{:?}",e)))?;
+                    let (len, dst) = outbound.recv_from(&mut buf).await.map_err(|e| {
+                        error!("{}",e);
+                        Error::Eor(anyhow::anyhow!("#11 {:?}", e))
+                    })?;
 
                     if len == 0 {
                         break
@@ -597,7 +642,10 @@ async fn proxy(
                     }*/
                 }
                 tls_stream_writer.flush().await?;
-                tls_stream_writer.close().await?;
+                tls_stream_writer.close().await.map_err(|e| {
+                    error!("{:?}", e);
+                    e
+                })?;
                 std::mem::drop(buf);
                 Ok(()) as Result<()>
             };
@@ -651,7 +699,10 @@ async fn proxy(
             // Ok(RequestHeader::UdpAssociate(hash_buf))
         }
         _ => {
-            tls_stream.close().await?;
+            tls_stream.close().await.map_err(|e| {
+                error!("{:?}", e);
+                e
+            })?;
             error!("cant decode incoming stream");
             // Err(Error::Eor(anyhow::anyhow!("invalid command")))
         }

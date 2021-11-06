@@ -3,15 +3,17 @@
 use app::{log_init, use_max_file_limit, DEFAULT_FALLBACK_ADDR, DEFAULT_LOG_PATH};
 use clap::{App, Arg};
 use errors::{Error, Result};
-// use glommio::{channels::shared_channel, CpuSet, Local, LocalExecutorPoolBuilder, Placement,enclose};
+// use glommio-raw::{channels::shared_channel, CpuSet, Local, LocalExecutorPoolBuilder, Placement,enclose};
 use app::init::{acmed_service, service_init};
 use async_process::Command;
-use async_std::task::{block_on, sleep};
+use async_std::task::{ sleep};
 use log::{error, info};
 // use smolscale::block_on;
-use glommio::{enclose, CpuSet, LocalExecutor, LocalExecutorBuilder, LocalExecutorPoolBuilder, Placement};
+use glommio::{
+    enclose, CpuSet,  LocalExecutorBuilder, LocalExecutorPoolBuilder, Placement, PoolPlacement
+};
 use std::{fs, path::Path, time::Duration};
-use trojan::{config::set_config, generate_authenticator, ProxyBuilder, SessionMessage};
+use trojan::{config::set_config, generate_authenticator, ProxyBuilder};
 // use mimalloc::MiMalloc;
 //
 // #[global_allocator]
@@ -56,8 +58,6 @@ fn main() -> Result<()> {
     let local_port = config.local_port;
     let passwd_list = config.password.to_owned();
     let authenticator = generate_authenticator(&passwd_list)?;
-    let cert = config.ssl.server().unwrap().cert.to_owned();
-    let key = config.ssl.server().unwrap().key.to_owned();
     let proxy_addr = format!("{}:{}", "0.0.0.0", local_port);
 
     let (init_tx, init_rx) = flume::bounded(1);
@@ -66,7 +66,7 @@ fn main() -> Result<()> {
 
     // let ex = LocalExecutor::default();
     // ex.run(async {
-    let builder = LocalExecutorBuilder::new().pin_to_cpu(0);
+    let builder = LocalExecutorBuilder::new(Placement::Fixed(0));
     let handle = builder
         .name("service")
         .spawn(|| {
@@ -116,14 +116,13 @@ fn main() -> Result<()> {
     init_rx.recv().unwrap();
     info!(" === init service completed === ");
 
-    let proxy = ProxyBuilder::new(proxy_addr, key, cert, authenticator, DEFAULT_FALLBACK_ADDR.to_string())?;
+    let proxy = ProxyBuilder::new(proxy_addr,  authenticator, DEFAULT_FALLBACK_ADDR.to_string())?;
     let config = set_config(config_path)?;
-    LocalExecutorPoolBuilder::new(cpu_nums)
+    LocalExecutorPoolBuilder::new(PoolPlacement::MaxSpread(cpu_nums, CpuSet::online().ok()))
         .spin_before_park(std::time::Duration::from_millis(10))
-        .placement(Placement::MaxSpread(CpuSet::online().ok()))
         .on_all_shards(enclose!((config) move|| {
             async move {
-                // let id = glommio::executor().id();
+                // let id = glommio-raw::executor().id();
                 // println!("Starting executor {}", id);
                 proxy.start(&config,receiver, Duration::from_secs(60),).await.unwrap();
             }
