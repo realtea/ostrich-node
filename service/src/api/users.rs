@@ -121,7 +121,7 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
                     port: node.addr.port,
                     country: None,
                     city: None,
-                    passwd: None
+                    passwd: Some(node.addr.passwd.clone())
                 }]
             });
             nodes.push_back(node);

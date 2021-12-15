@@ -12,7 +12,7 @@ red(){
 }
 working_dir=$(dirname $(readlink -f $0))
 
-#copy from 秋水逸冰 ss scripts
+
 if [[ -f /etc/redhat-release ]]; then
     release="centos"
     systemPackage="yum"
@@ -148,6 +148,13 @@ http {
             proxy_http_version 1.1;
             proxy_pass http://127.0.0.1:22751;
         }
+        location / {
+            add_header Access-Control-Allow-Origin "*";
+            add_header Cross-Origin-Resource-Policy cross-origin;
+            add_header Cross-Origin-Opener-Policy same-origin;
+            add_header Cross-Origin-Embedder-Policy require-corp;
+            try_files $uri $uri/ /index.html =404;
+        }
     }
     server {
         # SSL configuration
@@ -187,7 +194,7 @@ http {
             expires off;
             sendfile off;
             proxy_http_version 1.1;
-            proxy_pass http://127.0.0.1:22751;
+            proxy_pass http://127.0.0.1:443;
         }
         location /ostrich/api/ {
             proxy_set_header  X-Forwarded-Host \$host;
@@ -221,8 +228,8 @@ http {
         #       deny all;
         #}
 
-        listen [::]:443 ssl ipv6only=on; # managed by Certbot
-        listen 443 ssl; # managed by Certbot
+        listen [::]:9443 ssl ipv6only=on; # managed by Certbot
+        listen 9443 ssl; # managed by Certbot
         ssl_certificate /etc/ostrich/certs/fullchain.cer; # managed by Certbot
         ssl_certificate_key /etc/ostrich/certs/private.key; # managed by Certbot
         #include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
@@ -279,17 +286,17 @@ EOF
         unzip web.zip
     #	systemctl restart nginx.service
 
-    #	trojan_passwd=$(cat /dev/urandom | head -1 | md5sum | head -c 8)
+    ostrich_passwd=$(cat /dev/urandom | head -1 | md5sum | head -c 8)
     mkdir -p /etc/ostrich/conf /etc/ostrich/certs/tmp /etc/ostrich/db
 cat > /etc/ostrich/conf/ostrich.json <<-EOF
 {
     "run_type": "server",
     "local_addr": "$your_domain",
-    "local_port": 9443,
+    "local_port": 443,
     "remote_addr": "127.0.0.1",
     "remote_port": 80,
     "password": [
-        "251f6edc"
+        "$ostrich_passwd"
     ],
     "log_level": 1,
     "ssl": {
@@ -297,7 +304,7 @@ cat > /etc/ostrich/conf/ostrich.json <<-EOF
       "key": "/etc/ostrich/certs/private.key",
       "key_password": "",
       "cipher": "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384",
-      "cipher_tls13": "TLS_AES_128_GCM_SHA256:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_256_GCM_SHA384",
+      "cipher_tls13": "TLS13_AES_128_GCM_SHA256:TLS13_CHACHA20_POLY1305_SHA256:TLS13_AES_256_GCM_SHA384",
       "prefer_server_cipher": true,
       "alpn": [
         "http/1.1"

@@ -1,5 +1,5 @@
 #![allow(unreachable_code)]
-use crate::{tcp,  Address, Connection, SessionMessage, RELAY_BUFFER_SIZE};
+use crate::{tcp, Address, Connection, SessionMessage, RELAY_BUFFER_SIZE};
 // use async_std::{
 //     future::timeout,
 //     net::{TcpListener, TcpStream, UdpSocket},
@@ -19,7 +19,7 @@ use futures_util::{
 };
 use glommio::{
     net::{TcpListener, TcpStream, UdpSocket},
-    spawn_local,
+    spawn_local
 };
 use heapless::Vec as StackVec;
 use log::{debug, error, info};
@@ -198,7 +198,7 @@ impl ProxyBuilder {
 
         loop {
             // let mut receiver = receiver.clone();
-            select!{
+            select! {
                 incoming_stream = incoming.next().fuse() =>  {
                     // Some(incoming_stream) =>{
                     match incoming_stream.ok_or(Error::Eor(anyhow::anyhow!("got an empty incoming stream")))?{
@@ -293,8 +293,8 @@ impl ProxyBuilder {
 // const DEFAULT_BUFFER_SIZE: usize = 2 * 4096;
 
 async fn process_stream(
-    acceptor: TlsAcceptor,  raw_stream: TcpStream, source: SocketAddr, authenticator: Vec<String>, fallback: String,
-    resolver: Arc<AsyncStdResolver>,  connection_activity_tx: futures::channel::mpsc::Sender<SessionMessage>
+    acceptor: TlsAcceptor, raw_stream: TcpStream, source: SocketAddr, authenticator: Vec<String>, fallback: String,
+    resolver: Arc<AsyncStdResolver>, connection_activity_tx: futures::channel::mpsc::Sender<SessionMessage>
 ) -> Result<()> {
     // let source = raw_stream.peer_addr().map(|addr| addr.to_string()).unwrap_or_else(|_| "".to_owned());
     //
@@ -427,11 +427,9 @@ const CMD_TCP_CONNECT: u8 = 0x01;
 const CMD_UDP_ASSOCIATE: u8 = 0x03;
 
 async fn redirect_fallback<#[cfg(feature = "wss")] S: AsyncRead + AsyncWrite + Unpin + Send>(
-    // source: &str,
-    target: &str,
-    #[cfg(not(feature = "wss"))] tls_stream: TlsStream<TcpStream>,
-    #[cfg(feature = "wss")] mut tls_stream: WsStream<S>,
-    buf: &[u8]
+    source: &SocketAddr, target: &str, #[cfg(not(feature = "wss"))] tls_stream: TlsStream<TcpStream>,
+    #[cfg(feature = "wss")] mut tls_stream: WsStream<S>, buf: &[u8],
+    mut connection_activity_tx: futures::channel::mpsc::Sender<SessionMessage>
 ) -> Result<()> {
     let mut tcp_stream = TcpStream::connect(target).await.map_err(|e| {
         error!("{}", e);
@@ -444,6 +442,14 @@ async fn redirect_fallback<#[cfg(feature = "wss")] S: AsyncRead + AsyncWrite + U
     // let copy_future = tcp::CopyFuture::new(tls_stream, tcp_stream, Duration::from_secs(10));
     //
     // copy_future.await?;
+    let copy_future = tcp::CopyFuture::new(
+        tls_stream,
+        tcp_stream,
+        Duration::from_secs(60 * 5),
+        source.to_owned(),
+        connection_activity_tx
+    );
+    copy_future.await.map_err(|e| e)?;
     Ok(())
 }
 // async fn proxy(
@@ -461,14 +467,14 @@ async fn proxy(
     let len = tls_stream.read(&mut passwd_buf).await?;
     if len != HASH_STR_LEN {
         error!("first packet too short");
-        redirect_fallback(/* &source, */ &fallback, tls_stream, &passwd_buf).await?;
+        redirect_fallback(&source, &fallback, tls_stream, &passwd_buf, connection_activity_tx).await?;
 
         return Err(Error::Eor(anyhow::anyhow!("first packet too short")))
     }
     debug!("received client passwd: {:?}", String::from_utf8_lossy(&passwd_buf).to_string());
     if !authenticator.contains(&String::from_utf8_lossy(&passwd_buf).to_string()) {
         debug!("authentication failed, dropping connection");
-        redirect_fallback(/* &source, */ &fallback, tls_stream, &passwd_buf).await?;
+        redirect_fallback(&source, &fallback, tls_stream, &passwd_buf, connection_activity_tx).await?;
         return Err(Error::Eor(anyhow::anyhow!("authenticate failed")))
     } else {
         debug!("authentication succeeded");

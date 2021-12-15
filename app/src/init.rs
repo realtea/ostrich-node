@@ -19,7 +19,7 @@ use service::{
     http::tide::serve_register
 };
 // use smolscale::spawn;
-use glommio::{ spawn_local, task::JoinHandle, timer::sleep};
+use glommio::{spawn_local, task::JoinHandle, timer::sleep};
 use std::{env, fs, ops::Sub, sync::Arc, time::Duration};
 use trojan::config::Config;
 
@@ -88,9 +88,10 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
 
     let host = config.local_addr.to_owned();
     let port = config.local_port;
+    let passwd = config.password.first().expect("must spec your passwd first in the config file").to_owned();
     tasks.push(
         spawn_local(async move {
-            let addr = NodeAddress { ip: host.clone(), port };
+            let addr = NodeAddress { ip: host.clone(), port, passwd };
             let total = 50;
             loop {
                 sleep(Duration::from_secs(2 * 60 + 57)).await;

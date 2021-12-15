@@ -23,10 +23,8 @@ use sha2::{Digest, Sha224};
 use std::{
     fmt,
     fmt::{Debug, Formatter},
-
-    io::{Cursor},
+    io::Cursor,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
-
     sync::Arc
 };
 

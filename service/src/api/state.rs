@@ -7,7 +7,8 @@ use std::collections::VecDeque;
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct NodeAddress {
     pub ip: String,
-    pub port: u16
+    pub port: u16,
+    pub passwd: String
 }
 
 // pub enum Status{

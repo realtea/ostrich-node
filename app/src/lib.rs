@@ -13,7 +13,7 @@ use service::{
 use sqlx::{pool::PoolConnection, Sqlite};
 use std::{collections::HashMap, path::Path};
 pub const DNS_CACHE_TIMEOUT: u64 = 3 * 60;
-pub const DEFAULT_FALLBACK_ADDR: &str = "127.0.0.1::28780";
+pub const DEFAULT_FALLBACK_ADDR: &str = "127.0.0.1::80"; // TODO
 pub const DEFAULT_COMMAND_ADDR: &str = "127.0.0.1:12771";
 pub const DEFAULT_REGISTER_PORT: u16 = 22751;
 

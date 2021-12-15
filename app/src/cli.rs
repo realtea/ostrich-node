@@ -15,13 +15,11 @@ fn main() -> Result<()> {
     let matches = App::new("Ostrich")
         .version("0.1")
         .author("ostrich")
-        .subcommand(
-            App::new("create").about("create command").subcommand(
-                App::new("user")
-                    .about("create a new user")
-                    .arg(Arg::new("username").about("The username to create").required(true))
-            )
-        )
+        .subcommand(App::new("create").about("create command").subcommand(App::new("user")
+                    // .about("create a new user")
+                    .arg(Arg::new("username")
+                        // .about("The username to create")
+                        .required(true))))
         .get_matches();
 
     task::block_on(async {

@@ -44,7 +44,7 @@ glommio = {git = "https://github.com/DataDog/glommio.git",branch = "master"}
 
 futures-rustls = {path = "../futures-rustls",default-features = false,features = ["early-data"]}
 
-rustls = {version = "0.20.0",default-features = false,features = ["logging"]}
+rustls = {version = "0.20",default-features = false,features = ["logging"]}
 rustls-pemfile = "0.2.1"
 
 async-io = "1.6.0"

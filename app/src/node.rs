@@ -6,12 +6,10 @@ use errors::{Error, Result};
 // use glommio-raw::{channels::shared_channel, CpuSet, Local, LocalExecutorPoolBuilder, Placement,enclose};
 use app::init::{acmed_service, service_init};
 use async_process::Command;
-use async_std::task::{ sleep};
+use async_std::task::sleep;
 use log::{error, info};
 // use smolscale::block_on;
-use glommio::{
-    enclose, CpuSet,  LocalExecutorBuilder, LocalExecutorPoolBuilder, Placement, PoolPlacement
-};
+use glommio::{enclose, spawn_local, CpuSet, LocalExecutorBuilder, LocalExecutorPoolBuilder, Placement, PoolPlacement};
 use std::{fs, path::Path, time::Duration};
 use trojan::{config::set_config, generate_authenticator, ProxyBuilder};
 // use mimalloc::MiMalloc;
@@ -28,15 +26,13 @@ use trojan::{config::set_config, generate_authenticator, ProxyBuilder};
 fn main() -> Result<()> {
     let matches = App::new("ostrich")
         .version("0.1.0")
-        .arg(
-            Arg::new("config")
+        .arg(Arg::new("config")
                 .short('c')
                 .long("config")
                 .value_name("CONFIG")
-                .about("Specify the config file")
+                // .about("Specify the config file")
                 .takes_value(true)
-                .required(true)
-        )
+                .required(true))
         .get_matches();
 
     let config_path = matches.value_of("config").unwrap();
@@ -60,7 +56,7 @@ fn main() -> Result<()> {
     let authenticator = generate_authenticator(&passwd_list)?;
     let proxy_addr = format!("{}:{}", "0.0.0.0", local_port);
 
-    let (init_tx, init_rx) = flume::bounded(1);
+    // let (init_tx, init_rx) = flume::bounded(1);
 
     use_max_file_limit();
 
@@ -80,7 +76,49 @@ fn main() -> Result<()> {
 
                 let mut tasks = vec![];
                 tasks.append(&mut service_init(&config, &acmed_config).await?);
-                sleep(Duration::from_secs(7)).await;
+                // sleep(Duration::from_secs(7)).await;
+/*               let acme =  spawn_local(async move {
+                    loop {
+                        match acmed::renew::run(&renew_config) {
+                            Ok(_) => {
+                                info!("tls certification updated");
+                                break
+                            }
+                            Err(e) => {
+                                match e {
+                                    Error::AcmeLimited => break,
+                                    _ => {}
+                                }
+                                error!("update tls certification error: {:?}", e);
+                                sleep(Duration::from_secs(60 * 60)).await;
+                                continue
+                            }
+                        }
+                    }
+                    Ok(()) as Result<()>
+                })
+                    .detach();
+                acme.await.unwrap()?;*/
+
+/*                let _ = Command::new("nginx").arg("-s").arg("stop").status().await?;
+                sleep(Duration::from_secs(1)).await;
+                let _ = Command::new("systemctl").arg("start").arg("nginx").status().await?;*/
+                tasks.push(acmed_service(&acmed_config, sender).await?);
+
+/*                init_tx.send(true).unwrap();*/
+                use futures::future::join_all;
+                join_all(tasks).await;
+
+                Ok(()) as Result<()>
+            }
+        })
+        .unwrap();
+    std::thread::sleep(Duration::from_secs(7));
+    let builder = LocalExecutorBuilder::new(Placement::Fixed(0));
+    let acme_handle = builder
+        .name("acme_service")
+        .spawn(|| {
+            async move {
                 loop {
                     match acmed::renew::run(&renew_config) {
                         Ok(_) => {
@@ -98,25 +136,19 @@ fn main() -> Result<()> {
                         }
                     }
                 }
-
                 let _ = Command::new("nginx").arg("-s").arg("stop").status().await?;
                 sleep(Duration::from_secs(1)).await;
                 let _ = Command::new("systemctl").arg("start").arg("nginx").status().await?;
-                tasks.push(acmed_service(&acmed_config, sender).await?);
-
-                init_tx.send(true).unwrap();
-                use futures::future::join_all;
-                join_all(tasks).await;
-
+                // init_tx.send(true).unwrap();
                 Ok(()) as Result<()>
             }
         })
         .unwrap();
-
-    init_rx.recv().unwrap();
+    acme_handle.join().unwrap();
+    // init_rx.recv().unwrap();
     info!(" === init service completed === ");
 
-    let proxy = ProxyBuilder::new(proxy_addr,  authenticator, DEFAULT_FALLBACK_ADDR.to_string())?;
+    let proxy = ProxyBuilder::new(proxy_addr, authenticator, DEFAULT_FALLBACK_ADDR.to_string())?;
     let config = set_config(config_path)?;
     LocalExecutorPoolBuilder::new(PoolPlacement::MaxSpread(cpu_nums, CpuSet::online().ok()))
         .spin_before_park(std::time::Duration::from_millis(10))

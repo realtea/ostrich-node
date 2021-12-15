@@ -45,7 +45,7 @@ trojan = {path = "../trojan"}
 errors = {path = "../errors"}
 service = {path = "../service"}
 command = {path = "../command"}
-async-tls = {path = "../async-tls"}
+#async-tls = {path = "../async-tls"}
 acmed = {path = "../acmed" }
 
 [dependencies.clap]
