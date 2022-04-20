@@ -9,10 +9,10 @@ edition = "2018"
 [dependencies]
 #rusqlite = {version = "0.25.1",features = ["bundled"]}
 sqlx = { version = "0.5" }
-async-std = {version = "1.10.0",default-features = false,features = ["tokio1"]}
+async-std = {version = "1.10.0"}
 #hyper = { version = "0.14", features = ["full"] }
 #tokio = { version = "1" }
-tide = "0.16.0"
+#tide = "0.16.0"
 futures-lite = "1.11.1"
 async-trait = "0.1.50"
 log = "0.4.14"
@@ -25,7 +25,12 @@ bytes = {version = "0.5.6"}
 rand = "0.8.3"
 thiserror = "1.0.25"
 uuid = { version = "0.8", features = ["serde", "v4"] }
-
+ntex = { version = "0.5", features = ["glommio","rustls"] }
+ntex-files = {path = "../ntex-files"}
+env_logger = "0.9.0"
+rustls = "0.20.4"
+#webpki-roots = "0.22.3"
+rustls-pemfile = "1"
 
 errors = {path = "../errors"}
 acmed = {path = "../acmed" }

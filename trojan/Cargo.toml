@@ -29,7 +29,7 @@ sha2 = "0.9.5"
 hex = "0.4.3"
 heapless = "0.7.5"
 async-channel = "1.6.1"
-async-tungstenite = {version = "0.15.0"}
+#async-tungstenite = {version = "0.15.0"}
 spin = { version = "0.9", features = ["std"] }
 lru_time_cache = "0.11"
 socket2 = "0.3"
@@ -39,13 +39,24 @@ async-std-resolver ="0.21.0-alpha.2"
 ws_stream_tungstenite = {path = "../ws_stream_tungstenite",optional = true}
 tokio = {version = "1.12.0", features = ["time"]}
 #glommio-raw = {git = "https://github.com/thirstycrow/glommio.git",branch = "optimize_network_io"}
-glommio = {git = "https://github.com/DataDog/glommio.git",branch = "master"}
+#glommio = {git = "https://github.com/DataDog/glommio.git",branch = "master"}
+glommio = "0.7.0"
 #glommio = {path = "../glommio" }
 
-futures-rustls = {path = "../futures-rustls",default-features = false,features = ["early-data"]}
+#tls
+futures-rustls = {path = "../futures-rustls",features =  ["early-data", "dangerous_configuration"] }
+rustls = "0.20.4"
 
-rustls = {version = "0.20",default-features = false,features = ["logging"]}
-rustls-pemfile = "0.2.1"
+#pem = "1.0.2"
+webpki-roots = "0.22.3"
+rustls-pemfile = "1"
+#rcgen = "0.9"
+#rsa = "0.6.1"
+openssl = "0.10.38"
+x509-parser = {git = "https://github.com/rusticata/x509-parser.git"}
+rand = "0.8.5"
+ring ="0.17.0-alpha.11"
+#chrono = "0.4.19"
 
 async-io = "1.6.0"
 [dev-dependencies]

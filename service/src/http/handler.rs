@@ -2,7 +2,9 @@ use crate::{
     acme::renew::challenge_acme,
     api::{
         state::State,
-        users::{create_user, get_available_server, get_available_servers, update_available_server, User}
+        users::{create_user, get_available_server,
+                // get_available_servers,
+                update_available_server, User}
     },
     db::Db
 };
@@ -13,14 +15,16 @@ use serde_repr::*;
 use serde_with::skip_serializing_none;
 use sqlx::{pool::PoolConnection, Sqlite};
 use std::sync::Arc;
-use tide::{
-    http::{headers, StatusCode},
-    Body, Response
-};
+use ntex::web;
+use ntex::web::HttpResponse;
+use crate::api::state::Node;
+use crate::api::users::{AdminUser, QueryRequest};
+
 
 #[skip_serializing_none]
 #[derive(Serialize, Deserialize)]
 pub struct ServerAddr {
+    pub(crate) host: String,
     pub(crate) ip: String,
     pub(crate) port: u16,
     pub country: Option<String>,
@@ -96,7 +100,7 @@ where T: Serialize
 //     }
 //     // Ok(Response::new(Body::from("Hello from hyper!")))
 // }
-fn build_response(r: Result<ResponseEntity>) -> Result<Response> {
+fn build_response(r: Result<ResponseEntity>) -> Result<HttpResponse> {
     let mut code = 200;
     let content = match r {
         Ok(body) => {
@@ -124,34 +128,32 @@ fn build_response(r: Result<ResponseEntity>) -> Result<Response> {
             resp
         }
     };
-    let body = serde_json::to_vec(&content).map_err(|_| ServiceError::InternalError)?;
+/*    let body = serde_json::to_vec(&content).map_err(|_| ServiceError::InternalError)?;*/
 
-    let resp = Response::builder(StatusCode::Ok)
-        // .status(StatusCode::OK)
-        .header(headers::CONTENT_TYPE, "application/json")
-        .body(Body::from(body))
-        .build();
+    let resp = HttpResponse::Ok()
+        .content_type("application/json")
+        .json(&content);
     Ok(resp)
 }
 
-pub async fn handle_create_user<T>(req: tide::Request<Arc<State<T>>>) -> Result<Response>
+pub async fn handle_create_user<T>( body: web::types::Json<AdminUser>, state: web::types::State<Arc<State<T>>>) -> Result<HttpResponse>
 where T: Db<Conn = PoolConnection<Sqlite>> {
-    let ret = create_user(req).await;
+    let ret = create_user(body,state).await;
 
     let response = build_response(ret)?;
 
     Ok(response)
 }
 
-pub async fn handle_server_query<T>(req: tide::Request<Arc<State<T>>>) -> Result<Response>
+pub async fn handle_server_query<T>(body: web::types::Json<QueryRequest>,state: web::types::State<Arc<State<T>>>) -> Result<HttpResponse>
 where T: Db<Conn = PoolConnection<Sqlite>> {
-    let ret = get_available_server(req).await;
+    let ret = get_available_server(body,state).await;
 
     let response = build_response(ret)?;
 
     Ok(response)
 }
-pub async fn handle_server_lists_query<T>(req: tide::Request<Arc<State<T>>>) -> Result<Response>
+/*pub async fn handle_server_lists_query<T>(req: tide::Request<Arc<State<T>>>) -> Result<HttpResponse>
 where T: Db<Conn = PoolConnection<Sqlite>> {
     let ret = get_available_servers(req).await;
 
@@ -159,20 +161,20 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
 
     Ok(response)
 }
-
-pub async fn handle_server_update<T>(req: tide::Request<Arc<State<T>>>) -> Result<Response>
+*/
+pub async fn handle_server_update<T>(body: web::types::Json<Node>,state: web::types::State<Arc<State<T>>>) -> Result<HttpResponse>
 where T: Db<Conn = PoolConnection<Sqlite>> {
-    let ret = update_available_server(req).await;
+    let ret = update_available_server(body,state).await;
 
     let response = build_response(ret)?;
 
     Ok(response)
 }
 
-pub async fn handle_acme_challenge<T>(req: tide::Request<Arc<State<T>>>) -> Result<Response>
+/*pub async fn handle_acme_challenge<T>(req: tide::Request<Arc<State<T>>>) -> Result<Response>
 where T: Db<Conn = PoolConnection<Sqlite>> {
     challenge_acme(req).await
     // let response = build_response(ret)?;
     //
     // Ok(response)
-}
+}*/

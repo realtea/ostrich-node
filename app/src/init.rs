@@ -16,12 +16,14 @@ use service::{
     },
     db,
     db::{create_db, model::EntityId},
-    http::tide::serve_register
+    https::ntex::serve_register,
 };
 // use smolscale::spawn;
 use glommio::{spawn_local, task::JoinHandle, timer::sleep};
-use std::{env, fs, ops::Sub, sync::Arc, time::Duration};
+use std::{env, fs, ops::Sub, sync::Arc, thread, time::Duration};
+use service::http::ntex::serve_acme_challenge;
 use trojan::config::Config;
+use trojan::tls::certs::validate_certificate;
 
 pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<Vec<JoinHandle<Result<()>>>> {
     let mut tasks = vec![];
@@ -87,11 +89,12 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
     let register_db = db.clone();
 
     let host = config.local_addr.to_owned();
+    let ip = config.local_ip.to_owned();
     let port = config.local_port;
     let passwd = config.password.first().expect("must spec your passwd first in the config file").to_owned();
     tasks.push(
         spawn_local(async move {
-            let addr = NodeAddress { ip: host.clone(), port, passwd };
+/*            let addr = NodeAddress { host: host.clone(),ip, port, passwd };
             let total = 50;
             loop {
                 sleep(Duration::from_secs(2 * 60 + 57)).await;
@@ -110,7 +113,7 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
                         error!("{:?}", e);
                     }
                 }
-            }
+            }*/
             Ok(()) as Result<()>
         })
         .detach()
@@ -133,7 +136,7 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
             env::set_current_dir(&chall_dir)?;
             sandbox::init().context("Failed to drop privileges")?;
             let socket = format!("0.0.0.0:{:?}", DEFAULT_REGISTER_PORT);
-            serve_register(socket.as_str(), state).await?;
+            // serve_register(socket.as_str(), state)?;
             Ok(()) as Result<()>
             // });
         })
@@ -214,60 +217,63 @@ pub async fn service_init(config: &Config, acmed_config: &AcmeConfig) -> Result<
     Ok(tasks)
 }
 pub async fn acmed_service(
-    acmed_config: &AcmeConfig, sender: async_channel::Sender<bool>
+    config: &Config,
+    acmed_config: &AcmeConfig,
+    sender: async_channel::Sender<bool>
 ) -> Result<JoinHandle<Result<()>>> {
     let acmed_config = acmed_config.clone();
+    let der_file = config.ssl.server().unwrap().cert.to_owned();
+    let key_file = config.ssl.server().unwrap().key.to_owned();
     let task = spawn_local(async move {
-        // let config = acmed::config::load().map_err(|e| {error!("loading acme config: {:?}",e);e})?;
         debug!("Loaded runtime config: {:?}", &acmed_config);
-
         sleep(Duration::from_secs(7)).await;
-        // let sender = sender.connect().await;
-        // Channel has room for 1 element so this will always succeed
         let mut reload = false;
-        let _ = reload;
-        // or
-        // let mut reload;
         loop {
             sleep(Duration::from_secs(604800)).await; // checking every week
-                                                      // sleep(Duration::from_secs(90)).await; // for test
-            match acmed::renew::run(&acmed_config.clone()) {
-                Ok(_) => {
-                    info!("tls certs has been renewed");
-                    reload = true
-                }
-                Err(e) => {
-                    match e {
-                        Error::AcmeLimited => {
-                            warn!("hitting rate limit of LetsEncrypt");
-                            reload = true // test
-                                          // reload = false//production
-                        }
-                        _ => {
-                            error!("renewing tls certs error: {:?}", e);
-                            reload = false
+            // sleep(Duration::from_secs(90)).await; // for test
+            let der_path = std::path::Path::new(der_file.as_str());
+            let der_key_path = std::path::Path::new(key_file.as_str());
+            let mut certs_validated = true;
+            //check
+            if !der_path.exists() || !der_key_path.exists() {
+                certs_validated = false
+            }
+            let data = std::fs::read(der_file.as_str()).expect("Unable to read file");
+            if !validate_certificate(der_file.as_str(), &data).unwrap() {
+                certs_validated = false
+            }
+            if !certs_validated {
+                match acmed::renew::run(&acmed_config.clone()) {
+                    Ok(_) => {
+                        info!("tls certs has been renewed");
+                        reload = true
+                    }
+                    Err(e) => {
+                        match e {
+                            Error::AcmeLimited => {
+                                warn!("hitting rate limit of LetsEncrypt");
+                                reload = true // test
+                                // reload = false//production
+                            }
+                            _ => {
+                                error!("renewing tls certs error: {:?}", e);
+                                reload = false
+                            }
                         }
                     }
                 }
-            }
-            if reload {
-                let p = Command::new("nginx").arg("-s").arg("reload").status().await?;
-                if !p.success() {
-                    error!("failed to reload nginx service");
-                    continue
-                    // std::process::exit(1)
+                if reload {
+                    info!("start sending reload signal");
+                    for _ in 0..sender.capacity().unwrap_or(num_cpus::get()) {
+                        sender.send(true).await.map_err(|e| {
+                            error!("send reload signal error: {:?}", e);
+                            Error::Eor(anyhow::anyhow!("{:?}", e))
+                        })?;
+                    }
+                    info!("reload signal has been sent")
                 }
-                sleep(Duration::from_secs(7)).await;
+            }
 
-                info!("start sending reload signal");
-                for _ in 0..sender.capacity().unwrap_or(num_cpus::get()) {
-                    sender.send(true).await.map_err(|e| {
-                        error!("send reload signal error: {:?}", e);
-                        Error::Eor(anyhow::anyhow!("{:?}", e))
-                    })?;
-                }
-                info!("reload signal has been sent")
-            }
         }
         Ok(()) as Result<()>
     })

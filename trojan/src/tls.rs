@@ -145,3 +145,56 @@ pub fn make_config(config: &Config) -> rustls::ServerConfig {
 
     tls_config
 }
+
+
+
+pub mod certs{
+    use log::{error,info,debug};
+    use std::io;
+    use x509_parser::certificate::X509Certificate;
+    use x509_parser::parse_x509_certificate;
+    use errors::{Result,Error};
+
+    const PARSE_ERRORS_FATAL: bool = false;
+
+
+    pub fn validate_certificate(file_name: &str, data: &[u8]) -> Result<bool> {
+        match parse_x509_certificate(data) {
+            Ok((_, x509)) => {
+                if is_x509_expired(&x509).map_err(|e| {
+                    error!("{}", e);
+                    Error::Eor(anyhow::anyhow!("{:?}", e))
+                })? {
+                    return Ok(false);
+                }
+                Ok(true)
+            }
+            Err(e) => {
+                let s = format!("Error while parsing {}: {}", file_name, e);
+                if PARSE_ERRORS_FATAL {
+                    Err( Error::Eor(anyhow::anyhow!("#10 {:?}", e)))
+                } else {
+                    debug!("{}", s);
+                    Ok(true)
+                }
+            }
+        }
+    }
+    fn is_x509_expired(x509: &X509Certificate) -> Result<bool> {
+        let time_left = x509.validity().time_to_expiration();
+        if time_left.is_none() {
+            info!("#0:x509 is expired");
+            return Ok(true);
+        }
+
+        if time_left.is_some() {
+            if time_left.unwrap().whole_days() < 10 {
+                info!("#1:x509 is expired");
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+}
+

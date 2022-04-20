@@ -8,38 +8,35 @@ use crate::{api::state::State, db::Db};
 use log::{debug, error};
 use sqlx::{pool::PoolConnection, Sqlite};
 use std::{fs, path::Path, sync::Arc};
-use tide::{http::StatusCode, Body, Response};
+use ntex::web::HttpResponse;
+
+// use tide::{http::StatusCode, Body, Response};
 
 #[inline]
-fn bad_request() -> Result<Response> {
+fn bad_request() -> Result<HttpResponse> {
     // HttpResponse::BadRequest().body(BAD_REQUEST)
-    let resp = Response::builder(StatusCode::BadRequest)
+    let resp = HttpResponse::BadRequest()
         // .status()
         // .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(BAD_REQUEST))
-        .build();
+        .body(BAD_REQUEST);
     Ok(resp)
 }
 
 #[inline]
-fn not_found() -> Result<Response> {
+fn not_found() -> Result<HttpResponse> {
     // HttpResponse::NotFound().body(NOT_FOUND)
-
-    let resp = Response::builder(StatusCode::NotFound)
+    let resp = HttpResponse::NotFound()
         // .status()
         // .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(NOT_FOUND))
-        .build();
+        .body(NOT_FOUND);
     Ok(resp)
 }
 
-pub async fn challenge_acme<T>(req: tide::Request<Arc<State<T>>>) -> Result<Response>
-where T: Db<Conn = PoolConnection<Sqlite>> {
+pub async fn challenge_acme(token: &str) -> Result<HttpResponse> {
     // debug!("REQ: {:?}", req.query());
-    // let token = req.url().path().split("/").last().ok_or_else(|| anyhow!("Failed to extract url token")).unwrap();
-    let token = req.param("token").unwrap_or("");
-    error!("acme: {:?}", token.to_string());
-    if !chall::valid_token(&token) {
+
+    error!("acme: {:?}", token);
+    if !chall::valid_token(token) {
         return bad_request()
     }
 
@@ -47,11 +44,17 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
     debug!("Reading challenge proof: {:?}", path);
     if let Ok(proof) = fs::read(path) {
         // HttpResponse::Ok().body(proof)
-        let resp = Response::builder(StatusCode::Ok)
+        // let resp = Response::builder(StatusCode::Ok)
+        //     // .status()
+        //     // .header(header::CONTENT_TYPE, "application/json")
+        //     .body(Body::from(proof))
+        //     .build();
+
+        let resp = HttpResponse::Ok()
             // .status()
             // .header(header::CONTENT_TYPE, "application/json")
-            .body(Body::from(proof))
-            .build();
+            .body(proof);
+
         Ok(resp)
     } else {
         not_found()

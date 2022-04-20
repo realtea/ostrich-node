@@ -4,7 +4,7 @@ pub mod config;
 mod proxy;
 mod tcp;
 // mod udp;
-mod tls;
+pub mod tls;
 mod ws;
 // mod deplex;
 // mod read_buf;

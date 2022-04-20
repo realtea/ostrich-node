@@ -467,14 +467,14 @@ async fn proxy(
     let len = tls_stream.read(&mut passwd_buf).await?;
     if len != HASH_STR_LEN {
         error!("first packet too short");
-        redirect_fallback(&source, &fallback, tls_stream, &passwd_buf, connection_activity_tx).await?;
+        // redirect_fallback(&source, &fallback, tls_stream, &passwd_buf, connection_activity_tx).await?;
 
         return Err(Error::Eor(anyhow::anyhow!("first packet too short")))
     }
     debug!("received client passwd: {:?}", String::from_utf8_lossy(&passwd_buf).to_string());
     if !authenticator.contains(&String::from_utf8_lossy(&passwd_buf).to_string()) {
         debug!("authentication failed, dropping connection");
-        redirect_fallback(&source, &fallback, tls_stream, &passwd_buf, connection_activity_tx).await?;
+        // redirect_fallback(&source, &fallback, tls_stream, &passwd_buf, connection_activity_tx).await?;
         return Err(Error::Eor(anyhow::anyhow!("authenticate failed")))
     } else {
         debug!("authentication succeeded");

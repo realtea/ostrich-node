@@ -16,6 +16,7 @@ pub fn set_config<P: AsRef<Path>>(path: P) -> Result<Config> {
 pub struct Config {
     pub run_type: String,
     pub local_addr: String,
+    pub local_ip: String,
     pub local_port: u16,
     pub remote_addr: String,
     pub remote_port: u16,

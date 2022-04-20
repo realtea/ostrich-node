@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use serde_repr::*;
 use sqlx::{pool::PoolConnection, Sqlite};
 use std::{default::Default, ops::Sub, sync::Arc};
+use ntex::web;
 
 pub const USER_TOKEN_MAX_LEN: usize = 1024;
 pub const NODE_EXPIRE: i64 = 207; // 3`30``
@@ -35,7 +36,7 @@ enum Platform {
 }
 
 #[derive(Serialize)]
-struct UserResponseBody {
+struct QueryResponse {
     user: User
 }
 #[derive(Serialize_repr, Deserialize_repr)]
@@ -46,13 +47,23 @@ enum Role {
     SuperVisor
 }
 #[derive(Deserialize, Debug)]
-struct RequestBody {
+pub struct QueryRequest {
     user_id: String // platform: Platform
 }
-
-impl From<User> for UserResponseBody {
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminUser {
+    admin: String,
+    user: NewUser
+}
+#[derive(Deserialize)]
+struct NewUser {
+    id: String,
+    role: i32
+}
+impl From<User> for QueryResponse {
     fn from(user: User) -> Self {
-        UserResponseBody { user }
+        QueryResponse { user }
     }
 }
 
@@ -63,11 +74,10 @@ impl From<UserEntity> for User {
         User { token, role }
     }
 }
-pub async fn update_available_server<T>(mut req: tide::Request<Arc<State<T>>>) -> Result<ResponseEntity>
+pub async fn update_available_server<T>(body: web::types::Json<Node>,state: web::types::State<Arc<State<T>>>) -> Result<ResponseEntity>
 where T: Db<Conn = PoolConnection<Sqlite>> {
-    let body: Node = req.body_json().await.map_err(|_| ServiceError::InvalidParams)?;
+    let body =body.into_inner();
 
-    let state = req.state(); // Decode as JSON...
     info!("received node: {:?}", body);
     let addr = body.addr;
     let now = chrono::Utc::now().timestamp();
@@ -80,7 +90,7 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
         return Ok(ResponseEntity::Status)
     }
     for n in servers.iter_mut() {
-        if n.addr.ip == addr.ip {
+        if n.addr.host == addr.host {
             n.last_update = now;
             drop(servers);
             break
@@ -89,11 +99,10 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
     Ok(ResponseEntity::Status)
 }
 
-pub async fn get_available_server<T>(mut req: tide::Request<Arc<State<T>>>) -> Result<ResponseEntity>
+pub async fn get_available_server<T>(body: web::types::Json<QueryRequest>,state: web::types::State<Arc<State<T>>>) -> Result<ResponseEntity>
 where T: Db<Conn = PoolConnection<Sqlite>> {
-    let body: RequestBody = req.body_json().await.map_err(|_| ServiceError::InvalidParams)?;
+    let body =     body.into_inner();
     info!("body {:?}", body);
-    let state = req.state();
     let mut db = state.db.conn().await?;
     let mut nodes = state.server.lock().await;
     let now = chrono::Utc::now().timestamp();
@@ -117,6 +126,7 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
 
             let servers = ResponseEntity::Server(ServerNode {
                 server: vec![ServerAddr {
+                    host: node.addr.host.clone(),
                     ip: node.addr.ip.clone(),
                     port: node.addr.port,
                     country: None,
@@ -133,12 +143,11 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
     Err(Error::from(ServiceError::InvalidParams))
 }
 
-pub async fn get_available_servers<T>(mut req: tide::Request<Arc<State<T>>>) -> Result<ResponseEntity>
+/*pub async fn get_available_servers<T>(state: web::types::State<Arc<State<T>>>) -> Result<ResponseEntity>
 where T: Db<Conn = PoolConnection<Sqlite>> {
-    let body: RequestBody = req.body_json().await.map_err(|_| ServiceError::InvalidParams)?;
+    let body: QueryRequest = req.body_json().await.map_err(|_| ServiceError::InvalidParams)?;
     // Change the JSON...
     info!("body {:?}", body);
-    let state = req.state();
     let mut db = state.db.conn().await?;
     let mut nodes = state.server.lock().await;
     let now = chrono::Utc::now().timestamp();
@@ -164,6 +173,7 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
             let servers = ResponseEntity::Server(ServerNode {
                 server: vec![
                     ServerAddr {
+                        host: "".to_string(),
                         ip: node.addr.ip.clone(),
                         port: node.addr.port,
                         country: Some("United States".to_string()),
@@ -171,6 +181,7 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
                         passwd: Some("251f6edc".to_string())
                     },
                     ServerAddr {
+                        host: "".to_string(),
                         ip: "walkonbits.live".to_string(),
                         port: 90,
                         country: Some("Japan".to_string()),
@@ -186,34 +197,22 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
     }
     drop(nodes);
     Err(Error::from(ServiceError::InvalidParams))
-}
-pub async fn create_user<T>(mut req: tide::Request<Arc<State<T>>>) -> Result<ResponseEntity>
+}*/
+
+pub async fn create_user<T>(    body: web::types::Json<AdminUser>, state: web::types::State<Arc<State<T>>>) -> Result<ResponseEntity>
 where T: Db<Conn = PoolConnection<Sqlite>> {
-    let state = req.state();
     let mut db = state.db.conn().await?;
 
-    #[derive(Deserialize)]
-    struct NewUser {
-        id: String,
-        role: i32
-    }
-
-    #[derive(Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct RequestBody {
-        admin: String,
-        user: NewUser
-    }
     // Decode as JSON...
-    let body: RequestBody = req.body_json().await.map_err(|_| ServiceError::InvalidParams)?;
+    let admin =             body.into_inner();
 
-    let creator = db.get_user_by_token(body.admin.as_ref()).await.map_err(|e| {
+    let creator = db.get_user_by_token(admin.admin.as_ref()).await.map_err(|e| {
         error!("get admin error: {:?}", e);
         ServiceError::InvalidToken
     })?;
 
-    let role = body.user.role.clone() as i32;
-    let token = body.user.id;
+    let role = admin.user.role.clone() as i32;
+    let token = admin.user.id;
 
     if creator.role <= role {
         return Err(Error::from(ServiceError::NoPermission))
