@@ -155,6 +155,7 @@ dependencies = [
  "acmed",
  "anyhow",
  "async-channel",
+ "async-io",
  "async-process",
  "async-std",
  "byteorder",
@@ -175,6 +176,7 @@ dependencies = [
  "log",
  "log-panics",
  "log4rs",
+ "ntex",
  "num_cpus",
  "once_cell",
  "pin-project-lite 0.2.8",
@@ -3884,6 +3886,7 @@ dependencies = [
  "chrono",
  "env_logger 0.9.0",
  "errors",
+ "futures 0.3.21",
  "futures-lite",
  "log",
  "ntex",
@@ -3897,6 +3900,7 @@ dependencies = [
  "serde_with",
  "sqlx",
  "thiserror",
+ "trojan",
  "uuid",
 ]
 
@@ -4812,6 +4816,7 @@ checksum = "efd1f82c56340fdf16f2a953d7bda4f8fdffba13d93b00844c25572110b26079"
 name = "trojan"
 version = "0.1.0"
 dependencies = [
+ "acmed",
  "anyhow",
  "async-channel",
  "async-io",

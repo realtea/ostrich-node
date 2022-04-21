@@ -1,6 +1,8 @@
 use derive_more::{Display, From};
-use ntex::http::StatusCode;
-use ntex::web::error::{DefaultError, WebResponseError};
+use ntex::{
+    http::StatusCode,
+    web::error::{DefaultError, WebResponseError}
+};
 
 /// Errors which can occur when serving static files.
 #[derive(Display, Debug, From)]
@@ -24,7 +26,7 @@ pub enum FilesError {
 
     /// IO Error
     #[display(fmt = "Error reading: {}", _0)]
-    Io(std::io::Error),
+    Io(std::io::Error)
 }
 
 /// Return `NotFound` for `FilesError`
@@ -33,7 +35,7 @@ impl WebResponseError<DefaultError> for FilesError {
         match self {
             FilesError::MethodNotAllowed => StatusCode::METHOD_NOT_ALLOWED,
             FilesError::Uri(_) => StatusCode::BAD_REQUEST,
-            _ => StatusCode::NOT_FOUND,
+            _ => StatusCode::NOT_FOUND
         }
     }
 }
@@ -48,7 +50,7 @@ pub enum UriSegmentError {
     BadChar(char),
     /// The segment ended with the wrapped invalid character.
     #[display(fmt = "The segment ended with the wrapped invalid character")]
-    BadEnd(char),
+    BadEnd(char)
 }
 
 /// Return `BadRequest` for `UriSegmentError`

@@ -9,11 +9,11 @@ use async_process::Command;
 use async_std::task::sleep;
 use log::{error, info};
 // use smolscale::block_on;
+use futures::SinkExt;
 use glommio::{enclose, spawn_local, CpuSet, LocalExecutorBuilder, LocalExecutorPoolBuilder, Placement, PoolPlacement};
+use service::{http::ntex::serve_acme_challenge, AcmeStatus};
 use std::{fs, path::Path, time::Duration};
-use service::http::ntex::serve_acme_challenge;
-use trojan::{config::set_config, generate_authenticator, ProxyBuilder};
-use trojan::tls::certs::validate_certificate;
+use trojan::{config::set_config, generate_authenticator, tls::certs::is_x509_expired, ProxyBuilder};
 // use mimalloc::MiMalloc;
 //
 // #[global_allocator]
@@ -63,11 +63,12 @@ fn main() -> Result<()> {
     use_max_file_limit();
     println!("START SERVER");
     let handle = std::thread::spawn(move || {
-
         let _ = serve_acme_challenge();
-
     });
 
+    let (mut acme_tx, mut acme_rx) = futures::channel::mpsc::channel::<AcmeStatus>(1);
+    let mut acme_start_tx = acme_tx.clone();
+    let mut acme_running_tx = acme_tx.clone();
     let builder = LocalExecutorBuilder::new(Placement::Fixed(0));
     let handle = builder
         .name("service")
@@ -75,8 +76,8 @@ fn main() -> Result<()> {
             async move {
                 use futures::future::join_all;
                 let mut tasks = vec![];
-                tasks.append(&mut service_init(&config, &acmed_config).await?);
-                tasks.push(acmed_service(&config,&acmed_config, sender).await?);
+                tasks.append(&mut service_init(&config).await?);
+                tasks.append(&mut acmed_service(&config, &acmed_config, sender, acme_rx, acme_running_tx).await?);
                 join_all(tasks).await;
                 Ok(()) as Result<()>
             }
@@ -86,17 +87,17 @@ fn main() -> Result<()> {
     let builder = LocalExecutorBuilder::new(Placement::Fixed(0));
     let acme_handle = builder
         .name("acme_service")
-        .spawn( move|| {
+        .spawn(move || {
             async move {
                 let der_path = std::path::Path::new(der_file.as_str());
                 let der_key_path = std::path::Path::new(key_file.as_str());
                 let mut certs_validated = true;
-                //check
+                // check
                 if !der_path.exists() || !der_key_path.exists() {
                     certs_validated = false
                 }
                 let data = std::fs::read(der_file.as_str()).expect("Unable to read file");
-                if !validate_certificate(der_file.as_str(), &data).unwrap() {
+                if !is_x509_expired(der_file.as_str(), &data).unwrap() {
                     certs_validated = false
                 }
                 if !certs_validated {
@@ -118,6 +119,10 @@ fn main() -> Result<()> {
                         }
                     }
                 }
+                acme_start_tx.send(AcmeStatus::Start).await.map_err(|e| {
+                    error!("send acme start message: {:?}", e);
+                    Error::Eor(anyhow::anyhow!("{:?}", e))
+                })?;
                 Ok(()) as Result<()>
             }
         })

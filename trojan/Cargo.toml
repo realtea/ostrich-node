@@ -38,6 +38,7 @@ once_cell = "1.8.0"
 async-std-resolver ="0.21.0-alpha.2"
 ws_stream_tungstenite = {path = "../ws_stream_tungstenite",optional = true}
 tokio = {version = "1.12.0", features = ["time"]}
+acmed = {path = "../acmed"}
 #glommio-raw = {git = "https://github.com/thirstycrow/glommio.git",branch = "optimize_network_io"}
 #glommio = {git = "https://github.com/DataDog/glommio.git",branch = "master"}
 glommio = "0.7.0"

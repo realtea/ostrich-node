@@ -2,7 +2,7 @@
 #[derive(Debug, Clone, Copy)]
 pub struct HttpRange {
     pub start: u64,
-    pub length: u64,
+    pub length: u64
 }
 
 static PREFIX: &str = "bytes=";
@@ -15,10 +15,10 @@ impl HttpRange {
     /// `size` is full size of response (file).
     pub fn parse(header: &str, size: u64) -> Result<Vec<HttpRange>, ()> {
         if header.is_empty() {
-            return Ok(Vec::new());
+            return Ok(Vec::new())
         }
         if !header.starts_with(PREFIX) {
-            return Err(());
+            return Err(())
         }
 
         let size_sig = size as i64;
@@ -43,19 +43,16 @@ impl HttpRange {
                         length = size_sig;
                     }
 
-                    Ok(Some(HttpRange {
-                        start: (size_sig - length) as u64,
-                        length: length as u64,
-                    }))
+                    Ok(Some(HttpRange { start: (size_sig - length) as u64, length: length as u64 }))
                 } else {
                     let start: i64 = start_str.parse().map_err(|_| ())?;
 
                     if start < 0 {
-                        return Err(());
+                        return Err(())
                     }
                     if start >= size_sig {
                         no_overlap = true;
-                        return Ok(None);
+                        return Ok(None)
                     }
 
                     let length = if end_str.is_empty() {
@@ -65,7 +62,7 @@ impl HttpRange {
                         let mut end: i64 = end_str.parse().map_err(|_| ())?;
 
                         if start > end {
-                            return Err(());
+                            return Err(())
                         }
 
                         if end >= size_sig {
@@ -83,7 +80,7 @@ impl HttpRange {
         let ranges: Vec<HttpRange> = all_ranges.into_iter().filter_map(|x| x).collect();
 
         if no_overlap && ranges.is_empty() {
-            return Err(());
+            return Err(())
         }
 
         Ok(ranges)
@@ -124,62 +121,34 @@ mod tests {
             T("bytes=5-", 10, vec![HttpRange { start: 5, length: 5 }]),
             T("bytes=0-20", 10, vec![HttpRange { start: 0, length: 10 }]),
             T("bytes=15-,0-5", 10, vec![HttpRange { start: 0, length: 6 }]),
-            T(
-                "bytes=1-2,5-",
-                10,
-                vec![HttpRange { start: 1, length: 2 }, HttpRange { start: 5, length: 5 }],
-            ),
-            T(
-                "bytes=-2 , 7-",
-                11,
-                vec![HttpRange { start: 9, length: 2 }, HttpRange { start: 7, length: 4 }],
-            ),
-            T(
-                "bytes=0-0 ,2-2, 7-",
-                11,
-                vec![
-                    HttpRange { start: 0, length: 1 },
-                    HttpRange { start: 2, length: 1 },
-                    HttpRange { start: 7, length: 4 },
-                ],
-            ),
+            T("bytes=1-2,5-", 10, vec![HttpRange { start: 1, length: 2 }, HttpRange { start: 5, length: 5 }]),
+            T("bytes=-2 , 7-", 11, vec![HttpRange { start: 9, length: 2 }, HttpRange { start: 7, length: 4 }]),
+            T("bytes=0-0 ,2-2, 7-", 11, vec![
+                HttpRange { start: 0, length: 1 },
+                HttpRange { start: 2, length: 1 },
+                HttpRange { start: 7, length: 4 },
+            ]),
             T("bytes=-5", 10, vec![HttpRange { start: 5, length: 5 }]),
             T("bytes=-15", 10, vec![HttpRange { start: 0, length: 10 }]),
             T("bytes=0-499", 10000, vec![HttpRange { start: 0, length: 500 }]),
             T("bytes=500-999", 10000, vec![HttpRange { start: 500, length: 500 }]),
             T("bytes=-500", 10000, vec![HttpRange { start: 9500, length: 500 }]),
             T("bytes=9500-", 10000, vec![HttpRange { start: 9500, length: 500 }]),
-            T(
-                "bytes=0-0,-1",
-                10000,
-                vec![HttpRange { start: 0, length: 1 }, HttpRange { start: 9999, length: 1 }],
-            ),
-            T(
-                "bytes=500-600,601-999",
-                10000,
-                vec![
-                    HttpRange { start: 500, length: 101 },
-                    HttpRange { start: 601, length: 399 },
-                ],
-            ),
-            T(
-                "bytes=500-700,601-999",
-                10000,
-                vec![
-                    HttpRange { start: 500, length: 201 },
-                    HttpRange { start: 601, length: 399 },
-                ],
-            ),
+            T("bytes=0-0,-1", 10000, vec![HttpRange { start: 0, length: 1 }, HttpRange { start: 9999, length: 1 }]),
+            T("bytes=500-600,601-999", 10000, vec![HttpRange { start: 500, length: 101 }, HttpRange {
+                start: 601,
+                length: 399
+            }]),
+            T("bytes=500-700,601-999", 10000, vec![HttpRange { start: 500, length: 201 }, HttpRange {
+                start: 601,
+                length: 399
+            }]),
             // Match Apache laxity:
-            T(
-                "bytes=   1 -2   ,  4- 5, 7 - 8 , ,,",
-                11,
-                vec![
-                    HttpRange { start: 1, length: 2 },
-                    HttpRange { start: 4, length: 2 },
-                    HttpRange { start: 7, length: 2 },
-                ],
-            ),
+            T("bytes=   1 -2   ,  4- 5, 7 - 8 , ,,", 11, vec![
+                HttpRange { start: 1, length: 2 },
+                HttpRange { start: 4, length: 2 },
+                HttpRange { start: 7, length: 2 },
+            ]),
         ];
 
         for t in tests {
@@ -191,30 +160,17 @@ mod tests {
 
             if res.is_err() {
                 if expected.is_empty() {
-                    continue;
+                    continue
                 } else {
-                    assert!(
-                        false,
-                        "parse({}, {}) returned error {:?}",
-                        header,
-                        size,
-                        res.unwrap_err()
-                    );
+                    assert!(false, "parse({}, {}) returned error {:?}", header, size, res.unwrap_err());
                 }
             }
 
             let got = res.unwrap();
 
             if got.len() != expected.len() {
-                assert!(
-                    false,
-                    "len(parseRange({}, {})) = {}, want {}",
-                    header,
-                    size,
-                    got.len(),
-                    expected.len()
-                );
-                continue;
+                assert!(false, "len(parseRange({}, {})) = {}, want {}", header, size, got.len(), expected.len());
+                continue
             }
 
             for i in 0..expected.len() {

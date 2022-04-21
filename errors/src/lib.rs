@@ -1,9 +1,11 @@
 // #![feature(try_trait)]
 
-use std::fmt::{Display, Formatter};
-use sqlx::sqlite::SqliteError;
-use std::io;
 use ntex::web::{HttpRequest, HttpResponse, WebResponseError};
+use sqlx::sqlite::SqliteError;
+use std::{
+    fmt::{Display, Formatter},
+    io
+};
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -48,7 +50,7 @@ pub enum Error {
     HyperBodyError(#[from] hyper::http::Error),
 
     #[error("ntex errors")]
-    NtexWebError( NtexResponseError),
+    NtexWebError(NtexResponseError),
 
     #[error("future timeout")]
     TimeoutError(#[from] async_std::future::TimeoutError),
@@ -76,9 +78,9 @@ impl From<NtexResponseError> for Error {
 
 impl From<Error> for NtexResponseError {
     fn from(err: Error) -> NtexResponseError {
-        match err{
+        match err {
             Error::NtexWebError(e) => e,
-            _  => NtexResponseError::InternalServerError
+            _ => NtexResponseError::InternalServerError
         }
     }
 }
@@ -146,58 +148,60 @@ pub enum ServiceError {
     SqlError(#[from] SqliteError)
 }
 
-#[derive(Debug, derive_more::Display)]
+// #[derive(Debug, derive_more::Display)]
+#[derive(Debug)]
 pub enum NtexResponseError {
-
-    #[display(fmt = "Internal Server Error")]
+    // #[display(fmt = "Internal Server Error")]
     InternalServerError,
 
-    #[display(fmt = "BadRequest: {}", _0)]
+    // #[display(fmt = "BadRequest: {}", _0)]
     BadRequest(String),
 
-    #[display(fmt = "Unauthorized")]
-    Unauthorized,
+    // #[display(fmt = "Unauthorized")]
+    Unauthorized
+}
+
+impl std::fmt::Display for NtexResponseError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
 }
 
 // impl ResponseError trait allows to convert our errors into http responses with appropriate data
 impl WebResponseError for NtexResponseError {
     fn error_response(&self, _: &HttpRequest) -> HttpResponse {
         match self {
-            NtexResponseError::InternalServerError => HttpResponse::InternalServerError()
-                .json(&"Internal Server Error, Please try later"),
-            NtexResponseError::BadRequest(ref message) => {
-                HttpResponse::BadRequest().json(message)
+            NtexResponseError::InternalServerError => {
+                HttpResponse::InternalServerError().json(&"Internal Server Error, Please try later")
             }
-            NtexResponseError::Unauthorized => {
-                HttpResponse::Unauthorized().json(&"Unauthorized")
-            }
+            NtexResponseError::BadRequest(ref message) => HttpResponse::BadRequest().json(message),
+            NtexResponseError::Unauthorized => HttpResponse::Unauthorized().json(&"Unauthorized")
         }
     }
 }
 
-/*// we can return early in our handlers if UUID provided by the user is not valid
+// // we can return early in our handlers if UUID provided by the user is not valid
 // and provide a custom message
-impl From<ParseError> for ServiceError {
-    fn from(_: ParseError) -> ServiceError {
-        ServiceError::BadRequest("Invalid UUID".into())
-    }
-}
-
-impl From<DBError> for ServiceError {
-    fn from(error: DBError) -> ServiceError {
-        // Right now we just care about UniqueViolation from diesel
-        // But this would be helpful to easily map errors as our app grows
-        match error {
-            DBError::DatabaseError(kind, info) => {
-                if let DatabaseErrorKind::UniqueViolation = kind {
-                    let message =
-                        info.details().unwrap_or_else(|| info.message()).to_string();
-                    return ServiceError::BadRequest(message);
-                }
-                ServiceError::InternalServerError
-            }
-            _ => ServiceError::InternalServerError,
-        }
-    }
-}
-*/
+// impl From<ParseError> for ServiceError {
+// fn from(_: ParseError) -> ServiceError {
+// ServiceError::BadRequest("Invalid UUID".into())
+// }
+// }
+//
+// impl From<DBError> for ServiceError {
+// fn from(error: DBError) -> ServiceError {
+// Right now we just care about UniqueViolation from diesel
+// But this would be helpful to easily map errors as our app grows
+// match error {
+// DBError::DatabaseError(kind, info) => {
+// if let DatabaseErrorKind::UniqueViolation = kind {
+// let message =
+// info.details().unwrap_or_else(|| info.message()).to_string();
+// return ServiceError::BadRequest(message);
+// }
+// ServiceError::InternalServerError
+// }
+// _ => ServiceError::InternalServerError,
+// }
+// }
+// }

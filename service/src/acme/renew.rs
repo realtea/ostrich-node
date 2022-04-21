@@ -6,9 +6,9 @@ use errors::Result;
 // use hyper::{Body, Request, Response, StatusCode};
 use crate::{api::state::State, db::Db};
 use log::{debug, error};
+use ntex::web::HttpResponse;
 use sqlx::{pool::PoolConnection, Sqlite};
 use std::{fs, path::Path, sync::Arc};
-use ntex::web::HttpResponse;
 
 // use tide::{http::StatusCode, Body, Response};
 

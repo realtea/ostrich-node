@@ -5,6 +5,7 @@ edition = "2018"
 
 [dependencies]
 async-std = {version = "1.10.0",default-features = false,features = ["tokio1"]}
+async-io = "1.6.0"
 rustls = "0.19.1"
 log = "0.4.14"
 log-panics = "2.0.0"
@@ -32,6 +33,7 @@ async-process = "1.2.0"
 #glommio-raw = {git = "https://github.com/thirstycrow/glommio.git",branch = "optimize_network_io"}
 #glommio = {git = "https://github.com/DataDog/glommio.git",branch = "master"}
 glommio = "0.7.0"
+ntex = { version = "0.5", features = ["glommio"] }
 #glommio = {path = "../glommio" }
 
 #tokio = {version = "1.12.0",features = ["process"]}

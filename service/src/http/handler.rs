@@ -1,24 +1,19 @@
 use crate::{
     acme::renew::challenge_acme,
     api::{
-        state::State,
-        users::{create_user, get_available_server,
-                // get_available_servers,
-                update_available_server, User}
+        state::{Node, State},
+        users::{create_user, get_available_server, update_available_server, AdminUser, QueryRequest, User}
     },
     db::Db
 };
 use errors::{Error, Result, ServiceError};
 use log::warn;
+use ntex::{web, web::HttpResponse};
 use serde::{Deserialize, Serialize};
 use serde_repr::*;
 use serde_with::skip_serializing_none;
 use sqlx::{pool::PoolConnection, Sqlite};
 use std::sync::Arc;
-use ntex::web;
-use ntex::web::HttpResponse;
-use crate::api::state::Node;
-use crate::api::users::{AdminUser, QueryRequest};
 
 
 #[skip_serializing_none]
@@ -128,53 +123,56 @@ fn build_response(r: Result<ResponseEntity>) -> Result<HttpResponse> {
             resp
         }
     };
-/*    let body = serde_json::to_vec(&content).map_err(|_| ServiceError::InternalError)?;*/
+    // let body = serde_json::to_vec(&content).map_err(|_| ServiceError::InternalError)?;
 
-    let resp = HttpResponse::Ok()
-        .content_type("application/json")
-        .json(&content);
+    let resp = HttpResponse::Ok().content_type("application/json").json(&content);
     Ok(resp)
 }
 
-pub async fn handle_create_user<T>( body: web::types::Json<AdminUser>, state: web::types::State<Arc<State<T>>>) -> Result<HttpResponse>
+pub async fn handle_create_user<T>(
+    body: web::types::Json<AdminUser>, state: web::types::State<Arc<State<T>>>
+) -> Result<HttpResponse>
 where T: Db<Conn = PoolConnection<Sqlite>> {
-    let ret = create_user(body,state).await;
+    let ret = create_user(body, state).await;
 
     let response = build_response(ret)?;
 
     Ok(response)
 }
 
-pub async fn handle_server_query<T>(body: web::types::Json<QueryRequest>,state: web::types::State<Arc<State<T>>>) -> Result<HttpResponse>
+pub async fn handle_server_query<T>(
+    body: web::types::Json<QueryRequest>, state: web::types::State<Arc<State<T>>>
+) -> Result<HttpResponse>
 where T: Db<Conn = PoolConnection<Sqlite>> {
-    let ret = get_available_server(body,state).await;
+    let ret = get_available_server(body, state).await;
 
     let response = build_response(ret)?;
 
     Ok(response)
 }
-/*pub async fn handle_server_lists_query<T>(req: tide::Request<Arc<State<T>>>) -> Result<HttpResponse>
+// pub async fn handle_server_lists_query<T>(req: tide::Request<Arc<State<T>>>) -> Result<HttpResponse>
+// where T: Db<Conn = PoolConnection<Sqlite>> {
+// let ret = get_available_servers(req).await;
+//
+// let response = build_response(ret)?;
+//
+// Ok(response)
+// }
+pub async fn handle_server_update<T>(
+    body: web::types::Json<Node>, state: web::types::State<Arc<State<T>>>
+) -> Result<HttpResponse>
 where T: Db<Conn = PoolConnection<Sqlite>> {
-    let ret = get_available_servers(req).await;
+    let ret = update_available_server(body, state).await;
 
     let response = build_response(ret)?;
 
     Ok(response)
 }
-*/
-pub async fn handle_server_update<T>(body: web::types::Json<Node>,state: web::types::State<Arc<State<T>>>) -> Result<HttpResponse>
-where T: Db<Conn = PoolConnection<Sqlite>> {
-    let ret = update_available_server(body,state).await;
 
-    let response = build_response(ret)?;
-
-    Ok(response)
-}
-
-/*pub async fn handle_acme_challenge<T>(req: tide::Request<Arc<State<T>>>) -> Result<Response>
-where T: Db<Conn = PoolConnection<Sqlite>> {
-    challenge_acme(req).await
-    // let response = build_response(ret)?;
-    //
-    // Ok(response)
-}*/
+// pub async fn handle_acme_challenge<T>(req: tide::Request<Arc<State<T>>>) -> Result<Response>
+// where T: Db<Conn = PoolConnection<Sqlite>> {
+// challenge_acme(req).await
+// let response = build_response(ret)?;
+//
+// Ok(response)
+// }

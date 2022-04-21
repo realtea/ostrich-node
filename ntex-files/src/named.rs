@@ -1,28 +1,28 @@
-use std::error::Error;
-use std::fs::{File, Metadata};
-use std::io;
-use std::ops::{Deref, DerefMut};
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    error::Error,
+    fs::{File, Metadata},
+    io,
+    ops::{Deref, DerefMut},
+    path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH}
+};
 
-#[cfg(unix)]
-use std::os::unix::fs::MetadataExt;
+#[cfg(unix)] use std::os::unix::fs::MetadataExt;
 
 use bitflags::bitflags;
 use mime_guess::from_path;
 
-use futures::future::{ready, Ready};
-use futures::stream::TryStreamExt;
-use hyperx::header::{
-    self, Charset, ContentDisposition, DispositionParam, DispositionType, Header,
+use futures::{
+    future::{ready, Ready},
+    stream::TryStreamExt
 };
-use ntex::http::body::SizedStream;
-use ntex::http::header::ContentEncoding;
-use ntex::http::{self, StatusCode};
-use ntex::web::{BodyEncoding, ErrorRenderer, HttpRequest, HttpResponse, Responder};
+use hyperx::header::{self, Charset, ContentDisposition, DispositionParam, DispositionType, Header};
+use ntex::{
+    http::{self, body::SizedStream, header::ContentEncoding, StatusCode},
+    web::{BodyEncoding, ErrorRenderer, HttpRequest, HttpResponse, Responder}
+};
 
-use crate::range::HttpRange;
-use crate::ChunkedReadFile;
+use crate::{range::HttpRange, ChunkedReadFile};
 
 bitflags! {
     pub(crate) struct Flags: u8 {
@@ -49,7 +49,7 @@ pub struct NamedFile {
     pub(crate) status_code: StatusCode,
     pub(crate) content_type: mime::Mime,
     pub(crate) content_disposition: header::ContentDisposition,
-    pub(crate) encoding: Option<ContentEncoding>,
+    pub(crate) encoding: Option<ContentEncoding>
 }
 
 impl NamedFile {
@@ -82,23 +82,18 @@ impl NamedFile {
         let (content_type, content_disposition) = {
             let filename = match path.file_name() {
                 Some(name) => name.to_string_lossy(),
-                None => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "Provided path has no filename",
-                    ));
-                }
+                None => return Err(io::Error::new(io::ErrorKind::InvalidInput, "Provided path has no filename"))
             };
 
             let ct = from_path(&path).first_or_octet_stream();
             let disposition = match ct.type_() {
                 mime::IMAGE | mime::TEXT | mime::VIDEO => DispositionType::Inline,
-                _ => DispositionType::Attachment,
+                _ => DispositionType::Attachment
             };
             let parameters = vec![DispositionParam::Filename(
                 Charset::Ext(String::from("UTF-8")),
                 None,
-                filename.into_owned().into_bytes(),
+                filename.into_owned().into_bytes()
             )];
             let cd = ContentDisposition { disposition, parameters };
             (ct, cd)
@@ -116,7 +111,7 @@ impl NamedFile {
             modified,
             encoding,
             status_code: StatusCode::OK,
-            flags: Flags::default(),
+            flags: Flags::default()
         })
     }
 
@@ -202,18 +197,18 @@ impl NamedFile {
     }
 
     #[inline]
-    ///Specifies whether to use ETag or not.
+    /// Specifies whether to use ETag or not.
     ///
-    ///Default is true.
+    /// Default is true.
     pub fn use_etag(mut self, value: bool) -> Self {
         self.flags.set(Flags::ETAG, value);
         self
     }
 
     #[inline]
-    ///Specifies whether to use Last-Modified or not.
+    /// Specifies whether to use Last-Modified or not.
     ///
-    ///Default is true.
+    /// Default is true.
     pub fn use_last_modified(mut self, value: bool) -> Self {
         self.flags.set(Flags::LAST_MD, value);
         self
@@ -233,9 +228,7 @@ impl NamedFile {
                 }
             };
 
-            let dur = mtime
-                .duration_since(UNIX_EPOCH)
-                .expect("modification time must be after epoch");
+            let dur = mtime.duration_since(UNIX_EPOCH).expect("modification time must be after epoch");
             header::EntityTag::strong(format!(
                 "{:x}:{:x}:{:x}:{:x}",
                 ino,
@@ -256,28 +249,19 @@ impl NamedFile {
             resp.header(http::header::CONTENT_TYPE, self.content_type.to_string()).if_true(
                 self.flags.contains(Flags::CONTENT_DISPOSITION),
                 |res| {
-                    res.header(
-                        http::header::CONTENT_DISPOSITION,
-                        self.content_disposition.to_string(),
-                    );
-                },
+                    res.header(http::header::CONTENT_DISPOSITION, self.content_disposition.to_string());
+                }
             );
             if let Some(current_encoding) = self.encoding {
                 resp.encoding(current_encoding);
             }
-            let reader = ChunkedReadFile {
-                size: self.md.len(),
-                offset: 0,
-                file: Some(self.file),
-                fut: None,
-                counter: 0,
-            };
-            return resp.streaming(reader);
+            let reader =
+                ChunkedReadFile { size: self.md.len(), offset: 0, file: Some(self.file), fut: None, counter: 0 };
+            return resp.streaming(reader)
         }
 
         let etag = if self.flags.contains(Flags::ETAG) { self.etag() } else { None };
-        let last_modified =
-            if self.flags.contains(Flags::LAST_MD) { self.last_modified() } else { None };
+        let last_modified = if self.flags.contains(Flags::LAST_MD) { self.last_modified() } else { None };
 
         // check preconditions
         let precondition_failed = if !any_match(etag.as_ref(), req) {
@@ -285,11 +269,9 @@ impl NamedFile {
         } else if let (Some(ref m), Some(header::IfUnmodifiedSince(ref since))) = {
             let mut header = None;
             for hdr in req.headers().get_all(http::header::IF_UNMODIFIED_SINCE) {
-                if let Ok(v) =
-                    header::IfUnmodifiedSince::parse_header(&header::Raw::from(hdr.as_bytes()))
-                {
+                if let Ok(v) = header::IfUnmodifiedSince::parse_header(&header::Raw::from(hdr.as_bytes())) {
                     header = Some(v);
-                    break;
+                    break
                 }
             }
 
@@ -299,7 +281,7 @@ impl NamedFile {
             let t2: SystemTime = since.clone().into();
             match (t1.duration_since(UNIX_EPOCH), t2.duration_since(UNIX_EPOCH)) {
                 (Ok(t1), Ok(t2)) => t1 > t2,
-                _ => false,
+                _ => false
             }
         } else {
             false
@@ -313,11 +295,9 @@ impl NamedFile {
         } else if let (Some(ref m), Some(header::IfModifiedSince(ref since))) = {
             let mut header = None;
             for hdr in req.headers().get_all(http::header::IF_MODIFIED_SINCE) {
-                if let Ok(v) =
-                    header::IfModifiedSince::parse_header(&header::Raw::from(hdr.as_bytes()))
-                {
+                if let Ok(v) = header::IfModifiedSince::parse_header(&header::Raw::from(hdr.as_bytes())) {
                     header = Some(v);
-                    break;
+                    break
                 }
             }
             (last_modified, header)
@@ -326,7 +306,7 @@ impl NamedFile {
             let t2: SystemTime = since.clone().into();
             match (t1.duration_since(UNIX_EPOCH), t2.duration_since(UNIX_EPOCH)) {
                 (Ok(t1), Ok(t2)) => t1 <= t2,
-                _ => false,
+                _ => false
             }
         } else {
             false
@@ -336,11 +316,8 @@ impl NamedFile {
         resp.header(http::header::CONTENT_TYPE, self.content_type.to_string()).if_true(
             self.flags.contains(Flags::CONTENT_DISPOSITION),
             |res| {
-                res.header(
-                    http::header::CONTENT_DISPOSITION,
-                    self.content_disposition.to_string(),
-                );
-            },
+                res.header(http::header::CONTENT_DISPOSITION, self.content_disposition.to_string());
+            }
         );
         // default compressing
         if let Some(current_encoding) = self.encoding {
@@ -368,30 +345,24 @@ impl NamedFile {
                     resp.encoding(ContentEncoding::Identity);
                     resp.header(
                         http::header::CONTENT_RANGE,
-                        format!("bytes {}-{}/{}", offset, offset + length - 1, self.md.len()),
+                        format!("bytes {}-{}/{}", offset, offset + length - 1, self.md.len())
                     );
                 } else {
                     resp.header(http::header::CONTENT_RANGE, format!("bytes */{}", length));
-                    return resp.status(StatusCode::RANGE_NOT_SATISFIABLE).finish();
+                    return resp.status(StatusCode::RANGE_NOT_SATISFIABLE).finish()
                 };
             } else {
-                return resp.status(StatusCode::BAD_REQUEST).finish();
+                return resp.status(StatusCode::BAD_REQUEST).finish()
             };
         };
 
         if precondition_failed {
-            return resp.status(StatusCode::PRECONDITION_FAILED).finish();
+            return resp.status(StatusCode::PRECONDITION_FAILED).finish()
         } else if not_modified {
-            return resp.status(StatusCode::NOT_MODIFIED).finish();
+            return resp.status(StatusCode::NOT_MODIFIED).finish()
         }
 
-        let reader = ChunkedReadFile {
-            offset,
-            size: length,
-            file: Some(self.file),
-            fut: None,
-            counter: 0,
-        };
+        let reader = ChunkedReadFile { offset, size: length, file: Some(self.file), fut: None, counter: 0 };
         if offset != 0 || length != self.md.len() {
             resp.status(StatusCode::PARTIAL_CONTENT).streaming(reader)
         } else {
@@ -400,7 +371,7 @@ impl NamedFile {
                 reader.map_err(|e| {
                     let e: Box<dyn Error> = Box::new(e);
                     e
-                }),
+                })
             ))
         }
     }
@@ -430,13 +401,13 @@ fn any_match(etag: Option<&header::EntityTag>, req: &HttpRequest) -> bool {
                     if let Some(some_etag) = etag {
                         for item in items {
                             if item.strong_eq(some_etag) {
-                                return true;
+                                return true
                             }
                         }
                     }
                 }
             };
-            return false;
+            return false
         }
     }
     true
@@ -452,13 +423,13 @@ fn none_match(etag: Option<&header::EntityTag>, req: &HttpRequest) -> bool {
                     if let Some(some_etag) = etag {
                         for item in items {
                             if item.weak_eq(some_etag) {
-                                return false;
+                                return false
                             }
                         }
                     }
                     true
                 }
-            };
+            }
         }
     }
     true
