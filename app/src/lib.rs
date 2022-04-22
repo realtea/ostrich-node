@@ -1,4 +1,3 @@
-#![feature(maybe_uninit_extra)]
 #[macro_use] extern crate log;
 pub mod init;
 
@@ -156,7 +155,7 @@ pub fn log_init<P: AsRef<Path>>(level: u8, log_path: P) -> Result<()> {
 
     use log4rs::{
         append::rolling_file::RollingFileAppender,
-        config::{Appender, Config, Logger, Root},
+        config::{Appender, Config, Root},
         encode::pattern::PatternEncoder
     };
     const K: u64 = 1024;

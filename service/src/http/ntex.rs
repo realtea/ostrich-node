@@ -1,13 +1,8 @@
-use std::{sync::mpsc, thread, time};
-
 use crate::acme::renew::challenge_acme;
-use ntex::{
-    server::Server,
-    web::{self, middleware, App, HttpRequest, HttpResponse, WebResponseError}
-};
+use ntex::web::{self, middleware, App, HttpRequest, HttpResponse};
 
 async fn challenge(
-    req: HttpRequest, token: web::types::Path<String>
+    _req: HttpRequest, token: web::types::Path<String>
 ) -> Result<HttpResponse, errors::NtexResponseError> {
     println!("acme token: {:?}", token.as_str());
     let resp = challenge_acme(token.as_ref()).await?;
@@ -16,7 +11,6 @@ async fn challenge(
 
 #[ntex::main]
 pub async fn serve_acme_challenge() -> std::io::Result<()> {
-    // srv is server controller type, `dev::Server`
     let srv = web::server(|| {
         App::new()
             // enable logger
@@ -24,6 +18,7 @@ pub async fn serve_acme_challenge() -> std::io::Result<()> {
             .service(web::resource("/.well-known/acme-challenge/{token}").route(web::get().to(challenge)))
     })
     .bind("0.0.0.0:80")?
+    .disable_signals()
     .run();
     // run future
     srv.await

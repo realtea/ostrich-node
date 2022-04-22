@@ -1,15 +1,6 @@
 #![allow(unreachable_code)]
-use crate::{tcp, Address, Connection, SessionMessage, RELAY_BUFFER_SIZE};
-// use async_std::{
-//     future::timeout,
-//     net::{TcpListener, TcpStream, UdpSocket},
-//     task::{spawn}
-// };
-
-// use async_std::sync::Mutex;
+use crate::{config::Config, tcp, tls::make_config, Address, Connection, SessionMessage, RELAY_BUFFER_SIZE};
 use async_std_resolver::{config, resolver, AsyncStdResolver};
-// use async_tls::{server::TlsStream, TlsAcceptor};
-use crate::{config::Config, tls::make_config};
 use bytes::BufMut;
 use errors::{Error, Result};
 use futures::{channel::oneshot, select};
@@ -30,9 +21,6 @@ use std::{
     sync::Arc,
     time::Duration
 };
-// use async_std::net::{TcpStream, UdpSocket,TcpListener};
-// use socket2::{Domain, Socket, Type};
-
 cfg_if::cfg_if! {
     if #[cfg(wss)] {
         use ws_stream_tungstenite::WsStream as AsyncWsStream;
@@ -40,13 +28,6 @@ cfg_if::cfg_if! {
 
     }
 }
-// use futures_lite::AsyncWriteExt;
-// use glommio-raw::{
-//     channels::shared_channel::{SharedReceiver, SharedSender},
-//     net::{TcpListener, TcpStream, UdpSocket},
-//     Local
-// };
-
 #[derive(Clone)]
 pub struct ProxyBuilder {
     addr: String,
@@ -55,7 +36,6 @@ pub struct ProxyBuilder {
     authenticator: Vec<String>,
     fallback: String
 }
-
 
 impl ProxyBuilder {
     pub fn new(addr: String, authenticator: Vec<String>, fallback: String) -> Result<Self> {
@@ -429,7 +409,7 @@ const CMD_UDP_ASSOCIATE: u8 = 0x03;
 async fn redirect_fallback<#[cfg(feature = "wss")] S: AsyncRead + AsyncWrite + Unpin + Send>(
     source: &SocketAddr, target: &str, #[cfg(not(feature = "wss"))] tls_stream: TlsStream<TcpStream>,
     #[cfg(feature = "wss")] mut tls_stream: WsStream<S>, buf: &[u8],
-    mut connection_activity_tx: futures::channel::mpsc::Sender<SessionMessage>
+    connection_activity_tx: futures::channel::mpsc::Sender<SessionMessage>
 ) -> Result<()> {
     let mut tcp_stream = TcpStream::connect(target).await.map_err(|e| {
         error!("{}", e);

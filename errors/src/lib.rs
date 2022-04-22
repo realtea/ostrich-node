@@ -2,10 +2,7 @@
 
 use ntex::web::{HttpRequest, HttpResponse, WebResponseError};
 use sqlx::sqlite::SqliteError;
-use std::{
-    fmt::{Display, Formatter},
-    io
-};
+use std::io;
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -148,24 +145,23 @@ pub enum ServiceError {
     SqlError(#[from] SqliteError)
 }
 
-// #[derive(Debug, derive_more::Display)]
-#[derive(Debug)]
+#[derive(Debug, derive_more::Display)]
 pub enum NtexResponseError {
-    // #[display(fmt = "Internal Server Error")]
+    #[display(fmt = "Internal Server Error")]
     InternalServerError,
 
-    // #[display(fmt = "BadRequest: {}", _0)]
+    #[display(fmt = "BadRequest: {}", _0)]
     BadRequest(String),
 
-    // #[display(fmt = "Unauthorized")]
+    #[display(fmt = "Unauthorized")]
     Unauthorized
 }
 
-impl std::fmt::Display for NtexResponseError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        todo!()
-    }
-}
+// impl std::fmt::Display for NtexResponseError {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+//         todo!()
+//     }
+// }
 
 // impl ResponseError trait allows to convert our errors into http responses with appropriate data
 impl WebResponseError for NtexResponseError {

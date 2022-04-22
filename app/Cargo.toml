@@ -28,16 +28,9 @@ byteorder = "1.4.3"
 crc = "2.0.0"
 comfy-table = "3.0.0"
 chrono = "0.4.19"
-surf = {git = "https://github.com/http-rs/surf.git", features = ["h1-client-rustls"]}
-async-process = "1.2.0"
-#glommio-raw = {git = "https://github.com/thirstycrow/glommio.git",branch = "optimize_network_io"}
-#glommio = {git = "https://github.com/DataDog/glommio.git",branch = "master"}
-glommio = "0.7.0"
+glommio = {git = "https://github.com/DataDog/glommio.git"}
 ntex = { version = "0.5", features = ["glommio"] }
-#glommio = {path = "../glommio" }
 isahc = {version = "1.7", features = ["json"]}
-#tokio = {version = "1.12.0",features = ["process"]}
-#smolscale = "0.3.16"
 #mimalloc = "0.1.26"
 #[target.'cfg(not(target_env = "msvc"))'.dependencies]
 #tikv-jemallocator = "0.4.0"
@@ -48,20 +41,20 @@ trojan = {path = "../trojan"}
 errors = {path = "../errors"}
 service = {path = "../service"}
 command = {path = "../command"}
-#async-tls = {path = "../async-tls"}
 acmed = {path = "../acmed" }
+
+#allocator
+rpmalloc = { version = "0.2.0", features = ["guards", "statistics","unlimited_cache", "unlimited_global_cache", "unlimited_thread_cache"] }
 
 [dependencies.clap]
 version = "3.0.0-beta.4"
 #default-features = false
 features = ["default"]
 
-
-
 [features]
 default = ["trojan/default"]
 
-
+#rpmalloctor = ["rpmalloc"]
 
 [[bin]]
 name = "ostrich_node"

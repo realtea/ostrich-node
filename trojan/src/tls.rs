@@ -34,21 +34,21 @@ fn lookup_suites(suites: &String) -> Vec<rustls::SupportedCipherSuite> {
     out
 }
 
-/// Make a vector of protocol versions named in `versions`
-fn lookup_versions(versions: &[String]) -> Vec<&'static rustls::SupportedProtocolVersion> {
-    let mut out = Vec::new();
-
-    for vname in versions {
-        let version = match vname.as_ref() {
-            // "1.2" => &rustls::version::TLS12,
-            "1.3" => &rustls::version::TLS13,
-            _ => panic!("cannot look up version '{}', valid are '1.2' and '1.3'", vname)
-        };
-        out.push(version);
-    }
-
-    out
-}
+// /// Make a vector of protocol versions named in `versions`
+// fn lookup_versions(versions: &[String]) -> Vec<&'static rustls::SupportedProtocolVersion> {
+// let mut out = Vec::new();
+//
+// for vname in versions {
+// let version = match vname.as_ref() {
+// "1.2" => &rustls::version::TLS12,
+// "1.3" => &rustls::version::TLS13,
+// _ => panic!("cannot look up version '{}', valid are '1.2' and '1.3'", vname)
+// };
+// out.push(version);
+// }
+//
+// out
+// }
 
 pub fn load_certs(filename: &str) -> Vec<rustls::Certificate> {
     let certfile = fs::File::open(filename).expect("cannot open certificate file");

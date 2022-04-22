@@ -1,20 +1,14 @@
-use crate::{
-    acme::renew::challenge_acme,
-    api::{
-        state::{Node, State},
-        users::{create_user, get_available_server, update_available_server, AdminUser, QueryRequest, User}
-    },
-    db::Db
+use crate::api::{
+    state::{Node, State},
+    users::{create_user, get_available_server, update_available_server, AdminUser, QueryRequest, User}
 };
-use errors::{Error, ServiceError};
 use log::warn;
 use ntex::{web, web::HttpResponse};
 use serde::{Deserialize, Serialize};
 use serde_repr::*;
 use serde_with::skip_serializing_none;
-use sqlx::{Pool, pool::PoolConnection, Sqlite};
+use sqlx::{Pool, Sqlite};
 use std::sync::Arc;
-
 
 #[skip_serializing_none]
 #[derive(Serialize, Deserialize)]
@@ -56,46 +50,9 @@ where T: Serialize
     pub role: Role,
     pub ret: Option<T>
 }
-// pub async fn serve<T>(
-//     req: Request<Body>,
-//     // host: String,
-//     state: Arc<State<T>>
-// ) -> Result<Response<Body>>
-// where
-//     T: Db<Conn = PoolConnection<Sqlite>>
-// {
-//     debug!("Serving {}", req.uri());
-//     match (req.method(), req.uri().path()) {
-//         (&Method::POST, "/ostrich/admin/mobile/user/create") => {
-//             handle_create_user(req, state.clone()).await.map_err(|e| e.into())
-//         }
-//         (&Method::POST, "/ostrich/api/mobile/server/list") => {
-//             handle_server_query(req, state.clone()).await.map_err(|e| e.into())
-//         }
-//         (&Method::POST, "/ostrich/api/mobile/server/lists") => {
-//             handle_server_lists_query(req, state.clone()).await.map_err(|e| e.into())
-//         }
-//
-//         (&Method::POST, "/ostrich/api/server/update") => {
-//             handle_server_update(req, state.clone()).await.map_err(|e| e.into())
-//         }
-//         (&Method::POST, "/ostrich/api/submit") => {
-//             let response = Response::new(Body::from("hello world"));
-//             Ok(response)
-//             // handle_server_update(req, state.clone()).await.map_err(|e| e.into())
-//         }
-//         (&Method::GET, _) if req.uri().path().starts_with("/.well-known/acme-challenge") => {
-//             handle_acme_challenge(req).await.map_err(|e| e.into())
-//         }
-//
-//         _ => {
-//             // Return 404 not found response.
-//             Ok(Response::builder().status(StatusCode::NOT_FOUND).body(NOTFOUND.into())?)
-//         }
-//     }
-//     // Ok(Response::new(Body::from("Hello from hyper!")))
-// }
-fn build_response(r: Result<ResponseEntity,errors::NtexResponseError>) -> Result<HttpResponse,errors::NtexResponseError> {
+fn build_response(
+    r: Result<ResponseEntity, errors::NtexResponseError>
+) -> Result<HttpResponse, errors::NtexResponseError> {
     let mut code = 200;
     let content = match r {
         Ok(body) => {
@@ -131,7 +88,7 @@ fn build_response(r: Result<ResponseEntity,errors::NtexResponseError>) -> Result
 
 pub async fn handle_create_user(
     body: web::types::Json<AdminUser>, state: web::types::State<Arc<State<Pool<Sqlite>>>>
-) -> Result<HttpResponse,errors::NtexResponseError> {
+) -> Result<HttpResponse, errors::NtexResponseError> {
     let ret = create_user(body, state).await;
 
     let response = build_response(ret)?;
@@ -141,7 +98,7 @@ pub async fn handle_create_user(
 
 pub async fn handle_server_query(
     body: web::types::Json<QueryRequest>, state: web::types::State<Arc<State<Pool<Sqlite>>>>
-) -> Result<HttpResponse,errors::NtexResponseError> {
+) -> Result<HttpResponse, errors::NtexResponseError> {
     let ret = get_available_server(body, state).await;
 
     let response = build_response(ret)?;
@@ -158,18 +115,10 @@ pub async fn handle_server_query(
 // }
 pub async fn handle_server_update(
     body: web::types::Json<Node>, state: web::types::State<Arc<State<Pool<Sqlite>>>>
-) -> Result<HttpResponse,errors::NtexResponseError> {
+) -> Result<HttpResponse, errors::NtexResponseError> {
     let ret = update_available_server(body, state).await;
 
     let response = build_response(ret)?;
 
     Ok(response)
 }
-
-// pub async fn handle_acme_challenge<T>(req: tide::Request<Arc<State<T>>>) -> Result<Response>
-// where T: Db<Conn = PoolConnection<Sqlite>> {
-// challenge_acme(req).await
-// let response = build_response(ret)?;
-//
-// Ok(response)
-// }

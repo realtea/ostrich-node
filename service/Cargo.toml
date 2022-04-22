@@ -27,8 +27,7 @@ rand = "0.8.3"
 thiserror = "1.0.25"
 uuid = { version = "0.8", features = ["serde", "v4"] }
 ntex = { version = "0.5", features = ["glommio","rustls"] }
-ntex-files = {path = "../ntex-files"}
-env_logger = "0.9.0"
+#ntex-files = {path = "../ntex-files"}
 rustls = "0.20.4"
 #webpki-roots = "0.22.3"
 rustls-pemfile = "1"

@@ -3,7 +3,7 @@ use app::DEFAULT_COMMAND_ADDR;
 use async_std::future::timeout;
 use async_std::{net::UdpSocket, task};
 use bytes::BytesMut;
-use clap::{App, Arg};
+use clap::{Arg, Command};
 use comfy_table::Table;
 use command::{build_cmd, frame::Frame};
 use errors::{Error, Result};
@@ -12,10 +12,10 @@ use std::time::Duration;
 
 fn main() -> Result<()> {
     // let matches = Opt::into_app().get_matches();
-    let matches = App::new("Ostrich")
+    let matches = Command::new("Ostrich")
         .version("0.1")
         .author("ostrich")
-        .subcommand(App::new("create").about("create command").subcommand(App::new("user")
+        .subcommand(Command::new("create").about("create command").subcommand(Command::new("user")
                     // .about("create a new user")
                     .arg(Arg::new("username")
                         // .about("The username to create")

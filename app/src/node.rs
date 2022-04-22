@@ -1,17 +1,15 @@
 #![allow(unreachable_code)]
-
-use app::{log_init, use_max_file_limit, DEFAULT_FALLBACK_ADDR, DEFAULT_LOG_PATH};
-use clap::{App, Arg};
-use errors::{Error, Result};
-// use glommio-raw::{channels::shared_channel, CpuSet, Local, LocalExecutorPoolBuilder, Placement,enclose};
-use app::init::{acmed_service, service_init};
-use async_process::Command;
+use app::{
+    init::{acmed_service, service_init},
+    log_init, use_max_file_limit, DEFAULT_FALLBACK_ADDR, DEFAULT_LOG_PATH
+};
 use async_std::task::sleep;
-use log::{error, info,warn};
-// use smolscale::block_on;
+use clap::{Arg, Command};
+use errors::{Error, Result};
 use futures::SinkExt;
-use glommio::{enclose, spawn_local, CpuSet, LocalExecutorBuilder, LocalExecutorPoolBuilder, Placement, PoolPlacement};
-use service::{ AcmeStatus};
+use glommio::{enclose, CpuSet, LocalExecutorBuilder, LocalExecutorPoolBuilder, Placement, PoolPlacement};
+use log::{error, info, warn};
+use service::AcmeStatus;
 use std::{fs, path::Path, time::Duration};
 use trojan::{config::set_config, generate_authenticator, tls::certs::x509_is_expired, ProxyBuilder};
 // use mimalloc::MiMalloc;
@@ -25,8 +23,11 @@ use trojan::{config::set_config, generate_authenticator, tls::certs::x509_is_exp
 // #[global_allocator]
 // static GLOBAL: Jemalloc = Jemalloc;
 
+#[global_allocator]
+static ALLOC: rpmalloc::RpMalloc = rpmalloc::RpMalloc;
+
 fn main() -> Result<()> {
-    let matches = App::new("ostrich")
+    let matches = Command::new("ostrich")
         .version("0.1.0")
         .arg(Arg::new("config")
                 .short('c')
@@ -62,10 +63,10 @@ fn main() -> Result<()> {
 
     use_max_file_limit();
 
-    let (mut acme_tx, mut acme_rx) = futures::channel::mpsc::channel::<AcmeStatus>(16);
+    let (acme_tx, acme_rx) = futures::channel::mpsc::channel::<AcmeStatus>(16);
     let mut acme_start_tx = acme_tx.clone();
-    let mut acme_running_tx = acme_tx.clone();
-    let handle = std::thread::spawn(||{
+    let acme_running_tx = acme_tx.clone();
+    let handle = std::thread::spawn(|| {
         let builder = LocalExecutorBuilder::new(Placement::Fixed(0));
         let service_handle = builder
             .name("service")
@@ -80,7 +81,7 @@ fn main() -> Result<()> {
                 }
             })
             .unwrap();
-        service_handle.join().unwrap();
+        let _ = service_handle.join().unwrap();
     });
 
     std::thread::sleep(Duration::from_secs(7));
@@ -115,7 +116,7 @@ fn main() -> Result<()> {
                                     Error::AcmeLimited => {
                                         warn!("hitting rate limit of LetsEncrypt");
                                         break
-                                    },
+                                    }
                                     _ => {}
                                 }
                                 error!("update tls certification error: {:?}", e);
@@ -134,7 +135,7 @@ fn main() -> Result<()> {
             }
         })
         .unwrap();
-    acme_handle.join().unwrap();
+    let _ = acme_handle.join().unwrap();
     info!(" === init service completed === ");
 
     let proxy = ProxyBuilder::new(proxy_addr, authenticator, DEFAULT_FALLBACK_ADDR.to_string())?;
