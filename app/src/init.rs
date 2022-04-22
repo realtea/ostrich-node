@@ -17,7 +17,6 @@ use service::{
     },
     db,
     db::{create_db, model::EntityId},
-    http::ntex::serve_acme_challenge,
     https::ntex::serve_register,
     AcmeStatus
 };
@@ -67,17 +66,6 @@ pub async fn service_init(config: &Config) -> Result<Vec<JoinHandle<Result<()>>>
     let ip = config.local_ip.to_owned();
     let port = config.local_port;
     let passwd = config.password.first().expect("must spec your passwd first in the config file").to_owned();
-
-    tasks.push(
-        spawn_local(async {
-            std::thread::spawn(|| {
-                let _ = serve_acme_challenge();
-                Ok(()) as Result<()>
-            });
-            Ok(())
-        })
-        .detach()
-    );
 
     tasks.push(
         spawn_local(async move {

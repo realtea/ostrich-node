@@ -218,8 +218,10 @@ After=network.target
 Type=simple
 PIDFile=/etc/ostrich/ostrich_node.pid
 ExecStart=/usr/bin/ostrich_node -c "/etc/ostrich/conf/ostrich.json"
-ExecReload=
-ExecStop=
+TimeoutStartSec=3
+TimeoutStopSec=5
+Restart=on-failure
+KillSignal=SIGINT
 PrivateTmp=true
 
 [Install]

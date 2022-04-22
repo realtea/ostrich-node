@@ -9,7 +9,7 @@ use errors::{Error, Result};
 use futures::SinkExt;
 use glommio::{enclose, CpuSet, LocalExecutorBuilder, LocalExecutorPoolBuilder, Placement, PoolPlacement};
 use log::{error, info, warn};
-use service::AcmeStatus;
+use service::{http::ntex::serve_acme_challenge, AcmeStatus};
 use std::{fs, path::Path, time::Duration};
 use trojan::{config::set_config, generate_authenticator, tls::certs::x509_is_expired, ProxyBuilder};
 // use mimalloc::MiMalloc;
@@ -63,26 +63,27 @@ fn main() -> Result<()> {
 
     use_max_file_limit();
 
+    std::thread::spawn(|| {
+        let _ = serve_acme_challenge();
+        Ok(()) as Result<()>
+    });
     let (acme_tx, acme_rx) = futures::channel::mpsc::channel::<AcmeStatus>(16);
     let mut acme_start_tx = acme_tx.clone();
     let acme_running_tx = acme_tx.clone();
-    let handle = std::thread::spawn(|| {
-        let builder = LocalExecutorBuilder::new(Placement::Fixed(0));
-        let service_handle = builder
-            .name("service")
-            .spawn(|| {
-                async move {
-                    use futures::future::join_all;
-                    let mut tasks = vec![];
-                    tasks.append(&mut service_init(&config).await?);
-                    tasks.append(&mut acmed_service(&config, &acmed_config, sender, acme_rx, acme_running_tx).await?);
-                    join_all(tasks).await;
-                    Ok(()) as Result<()>
-                }
-            })
-            .unwrap();
-        let _ = service_handle.join().unwrap();
-    });
+    let builder = LocalExecutorBuilder::new(Placement::Fixed(0));
+    let service_handle = builder
+        .name("service")
+        .spawn(|| {
+            async move {
+                use futures::future::join_all;
+                let mut tasks = vec![];
+                tasks.append(&mut service_init(&config).await?);
+                tasks.append(&mut acmed_service(&config, &acmed_config, sender, acme_rx, acme_running_tx).await?);
+                join_all(tasks).await;
+                Ok(()) as Result<()>
+            }
+        })
+        .unwrap();
 
     std::thread::sleep(Duration::from_secs(7));
     let builder = LocalExecutorBuilder::new(Placement::Fixed(0));
@@ -151,6 +152,6 @@ fn main() -> Result<()> {
         }))
         .unwrap()
         .join_all();
-    handle.join().unwrap();
+    let _ = service_handle.join().unwrap();
     Ok(())
 }
