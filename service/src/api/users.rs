@@ -7,7 +7,7 @@ use crate::{
 };
 // use bytes::buf::ext::BufExt;
 use crate::http::handler::{ResponseEntity, ServerAddr, ServerNode};
-use errors::{Error, Result, ServiceError};
+use errors::{Error, ServiceError};
 // use hyper::{body::Buf, Body, Request};
 use log::{error, info};
 use ntex::web;
@@ -73,7 +73,7 @@ impl From<UserEntity> for User {
 }
 pub async fn update_available_server<T>(
     body: web::types::Json<Node>, state: web::types::State<Arc<State<T>>>
-) -> Result<ResponseEntity>
+) -> Result<ResponseEntity,errors::NtexResponseError>
 where T: Db<Conn = PoolConnection<Sqlite>> {
     let body = body.into_inner();
     info!("received node: {:?}", body);
@@ -99,7 +99,7 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
 
 pub async fn get_available_server<T>(
     body: web::types::Json<QueryRequest>, state: web::types::State<Arc<State<T>>>
-) -> Result<ResponseEntity>
+) -> Result<ResponseEntity,errors::NtexResponseError>
 where T: Db<Conn = PoolConnection<Sqlite>> {
     let body = body.into_inner();
     info!("body {:?}", body);
@@ -109,19 +109,19 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
     let len = nodes.len();
 
     if len == 0 {
-        return Err(Error::from(ServiceError::InvalidParams))
+        return Err(errors::NtexResponseError::InternalServerError)
     }
     for _i in 0..len {
         let node = nodes.pop_front();
         if node.is_none() {
             drop(nodes);
-            return Err(Error::from(ServiceError::InvalidParams))
+            return Err(errors::NtexResponseError::InternalServerError)
         }
         let node = node.unwrap();
         if now.sub(node.last_update) < NODE_EXPIRE {
             db.get_user_by_token(body.user_id.as_ref()).await.map_err(|e| {
                 info!("sql error: {:?}", e);
-                ServiceError::IllegalToken
+                errors::NtexResponseError::BadRequest("user id is invalidate".to_string())
             })?;
 
             let servers = ResponseEntity::Server(ServerNode {
@@ -140,7 +140,7 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
         }
     }
     drop(nodes);
-    Err(Error::from(ServiceError::InvalidParams))
+    Err(   errors::NtexResponseError::BadRequest("user id is invalidate".to_string()))
 }
 
 // pub async fn get_available_servers<T>(state: web::types::State<Arc<State<T>>>) -> Result<ResponseEntity>
@@ -201,24 +201,24 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
 
 pub async fn create_user<T>(
     body: web::types::Json<AdminUser>, state: web::types::State<Arc<State<T>>>
-) -> Result<ResponseEntity>
+) -> Result<ResponseEntity,errors::NtexResponseError>
 where T: Db<Conn = PoolConnection<Sqlite>> {
     let mut db = state.db.conn().await?;
     // Decode as JSON...
     let admin = body.into_inner();
     let creator = db.get_user_by_token(admin.admin.as_ref()).await.map_err(|e| {
         error!("get admin error: {:?}", e);
-        ServiceError::InvalidToken
+        errors::NtexResponseError::BadRequest("user id is invalidate".to_string())
     })?;
     let role = admin.user.role.clone() as i32;
     let token = admin.user.id;
     if creator.role <= role {
-        return Err(Error::from(ServiceError::NoPermission))
+        return Err(   errors::NtexResponseError::BadRequest("no permission".to_string()))
     }
     if token.len() > USER_TOKEN_MAX_LEN {
-        return Err(Error::from(ServiceError::IllegalToken))
+        return Err(   errors::NtexResponseError::BadRequest("user id is invalidate".to_string()))
     }
-    db.create_user(token.clone(), role as i32).await.map_err(|_| ServiceError::TokenOccupied)?;
+    db.create_user(token.clone(), role as i32).await.map_err(|_|    errors::NtexResponseError::BadRequest("user id is occupied".to_string()))?;
     let new = ResponseEntity::User(User { token, role });
     Ok(new)
 }

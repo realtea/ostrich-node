@@ -148,8 +148,8 @@ pub fn make_config(config: &Config) -> rustls::ServerConfig {
 
 
 pub mod certs {
-    use errors::{ Result};
-    use log::{info};
+    use errors::Result;
+    use log::info;
 
     // use log::{debug, error, info};
     // use std::io;
@@ -158,10 +158,10 @@ pub mod certs {
     // const PARSE_ERRORS_FATAL: bool = false;
 
 
-    pub fn is_x509_expired(file_name: &str, data: &[u8]) -> Result<bool> {
+    pub fn x509_is_expired(file_name: &str, data: &[u8]) -> Result<bool> {
         let pem = acmed::cert::CertInfo::from_pem(&data)?;
         if pem.days_left() < 10 {
-            info!("{} is expired",file_name);
+            info!("{} is expired", file_name);
             return Ok(true)
         }
         Ok(false)

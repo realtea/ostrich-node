@@ -7,13 +7,13 @@ use errors::{Error, Result};
 use app::init::{acmed_service, service_init};
 use async_process::Command;
 use async_std::task::sleep;
-use log::{error, info};
+use log::{error, info,warn};
 // use smolscale::block_on;
 use futures::SinkExt;
 use glommio::{enclose, spawn_local, CpuSet, LocalExecutorBuilder, LocalExecutorPoolBuilder, Placement, PoolPlacement};
-use service::{http::ntex::serve_acme_challenge, AcmeStatus};
+use service::{ AcmeStatus};
 use std::{fs, path::Path, time::Duration};
-use trojan::{config::set_config, generate_authenticator, tls::certs::is_x509_expired, ProxyBuilder};
+use trojan::{config::set_config, generate_authenticator, tls::certs::x509_is_expired, ProxyBuilder};
 // use mimalloc::MiMalloc;
 //
 // #[global_allocator]
@@ -61,28 +61,28 @@ fn main() -> Result<()> {
     let proxy_addr = format!("{}:{}", "0.0.0.0", local_port);
 
     use_max_file_limit();
-    println!("START SERVER");
-    let handle = std::thread::spawn(move || {
-        let _ = serve_acme_challenge();
-    });
 
-    let (mut acme_tx, mut acme_rx) = futures::channel::mpsc::channel::<AcmeStatus>(1);
+    let (mut acme_tx, mut acme_rx) = futures::channel::mpsc::channel::<AcmeStatus>(16);
     let mut acme_start_tx = acme_tx.clone();
     let mut acme_running_tx = acme_tx.clone();
-    let builder = LocalExecutorBuilder::new(Placement::Fixed(0));
-    let handle = builder
-        .name("service")
-        .spawn(|| {
-            async move {
-                use futures::future::join_all;
-                let mut tasks = vec![];
-                tasks.append(&mut service_init(&config).await?);
-                tasks.append(&mut acmed_service(&config, &acmed_config, sender, acme_rx, acme_running_tx).await?);
-                join_all(tasks).await;
-                Ok(()) as Result<()>
-            }
-        })
-        .unwrap();
+    let handle = std::thread::spawn(||{
+        let builder = LocalExecutorBuilder::new(Placement::Fixed(0));
+        let service_handle = builder
+            .name("service")
+            .spawn(|| {
+                async move {
+                    use futures::future::join_all;
+                    let mut tasks = vec![];
+                    tasks.append(&mut service_init(&config).await?);
+                    tasks.append(&mut acmed_service(&config, &acmed_config, sender, acme_rx, acme_running_tx).await?);
+                    join_all(tasks).await;
+                    Ok(()) as Result<()>
+                }
+            })
+            .unwrap();
+        service_handle.join().unwrap();
+    });
+
     std::thread::sleep(Duration::from_secs(7));
     let builder = LocalExecutorBuilder::new(Placement::Fixed(0));
     let acme_handle = builder
@@ -94,13 +94,16 @@ fn main() -> Result<()> {
                 let mut certs_validated = true;
                 // check
                 if !der_path.exists() || !der_key_path.exists() {
+                    info!("tls certification file does not exist");
                     certs_validated = false
                 }
                 let data = std::fs::read(der_file.as_str()).expect("Unable to read file");
-                if !is_x509_expired(der_file.as_str(), &data).unwrap() {
+                if x509_is_expired(der_file.as_str(), &data).unwrap() {
+                    info!("tls certification is expired");
                     certs_validated = false
                 }
                 if !certs_validated {
+                    info!("tls certification invalidate");
                     loop {
                         match acmed::renew::run(&renew_config) {
                             Ok(_) => {
@@ -109,7 +112,10 @@ fn main() -> Result<()> {
                             }
                             Err(e) => {
                                 match e {
-                                    Error::AcmeLimited => break,
+                                    Error::AcmeLimited => {
+                                        warn!("hitting rate limit of LetsEncrypt");
+                                        break
+                                    },
                                     _ => {}
                                 }
                                 error!("update tls certification error: {:?}", e);
@@ -119,6 +125,7 @@ fn main() -> Result<()> {
                         }
                     }
                 }
+                info!("send start signal");
                 acme_start_tx.send(AcmeStatus::Start).await.map_err(|e| {
                     error!("send acme start message: {:?}", e);
                     Error::Eor(anyhow::anyhow!("{:?}", e))

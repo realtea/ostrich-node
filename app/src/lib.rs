@@ -15,7 +15,7 @@ use std::{collections::HashMap, path::Path};
 pub const DNS_CACHE_TIMEOUT: u64 = 3 * 60;
 pub const DEFAULT_FALLBACK_ADDR: &str = "127.0.0.1::80"; // TODO
 pub const DEFAULT_COMMAND_ADDR: &str = "127.0.0.1:12771";
-pub const DEFAULT_REGISTER_PORT: u16 = 22751;
+pub const DEFAULT_REGISTER_PORT: u16 = 9443;
 
 pub const DEFAULT_LOG_PATH: &str = "/etc/ostrich/logs/";
 pub const DEFAULT_LOG_CLEANUP_INTERVAL: u64 = 259200;
@@ -156,7 +156,7 @@ pub fn log_init<P: AsRef<Path>>(level: u8, log_path: P) -> Result<()> {
 
     use log4rs::{
         append::rolling_file::RollingFileAppender,
-        config::{Appender, Config, Root},
+        config::{Appender, Config, Logger, Root},
         encode::pattern::PatternEncoder
     };
     const K: u64 = 1024;
@@ -181,6 +181,7 @@ pub fn log_init<P: AsRef<Path>>(level: u8, log_path: P) -> Result<()> {
                 )
             )
         )
+        // .logger(Logger::builder().appender("ostrich_node").additive(true).build("ostrich_node", from_usize(level as usize)))
         .build(Root::builder().appender("logfile").build(from_usize(level as usize)))
         .unwrap();
     log4rs::init_config(config).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;

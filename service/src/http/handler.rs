@@ -6,13 +6,13 @@ use crate::{
     },
     db::Db
 };
-use errors::{Error, Result, ServiceError};
+use errors::{Error, ServiceError};
 use log::warn;
 use ntex::{web, web::HttpResponse};
 use serde::{Deserialize, Serialize};
 use serde_repr::*;
 use serde_with::skip_serializing_none;
-use sqlx::{pool::PoolConnection, Sqlite};
+use sqlx::{Pool, pool::PoolConnection, Sqlite};
 use std::sync::Arc;
 
 
@@ -95,7 +95,7 @@ where T: Serialize
 //     }
 //     // Ok(Response::new(Body::from("Hello from hyper!")))
 // }
-fn build_response(r: Result<ResponseEntity>) -> Result<HttpResponse> {
+fn build_response(r: Result<ResponseEntity,errors::NtexResponseError>) -> Result<HttpResponse,errors::NtexResponseError> {
     let mut code = 200;
     let content = match r {
         Ok(body) => {
@@ -105,15 +105,15 @@ fn build_response(r: Result<ResponseEntity>) -> Result<HttpResponse> {
 
         Err(e) => {
             match e {
-                Error::ServiceError(ServiceError::InvalidParams) => code = 400,
-                Error::ServiceError(ServiceError::IllegalToken) => code = 401,
-                Error::ServiceError(ServiceError::NoPermission) => code = 402,
-                Error::ServiceError(ServiceError::LimitedToken) => code = 403,
-                Error::ServiceError(ServiceError::IllegalAccess) => code = 404,
-                Error::ServiceError(ServiceError::TokenOccupied) => code = 405,
-                Error::ServiceError(ServiceError::InvalidToken) => code = 406,
-                Error::ServiceError(ServiceError::InternalError) => code = 500,
-                Error::ServiceError(ServiceError::DataError) => code = 500,
+                errors::NtexResponseError::InternalServerError => code = 400,
+                errors::NtexResponseError::BadRequest(_) => code = 401,
+                errors::NtexResponseError::Unauthorized => code = 404,
+                // Error::ServiceError(ServiceError::LimitedToken) => code = 403,
+                // Error::ServiceError(ServiceError::IllegalAccess) => code = 404,
+                // Error::ServiceError(ServiceError::TokenOccupied) => code = 405,
+                // Error::ServiceError(ServiceError::InvalidToken) => code = 406,
+                // Error::ServiceError(ServiceError::InternalError) => code = 500,
+                // Error::ServiceError(ServiceError::DataError) => code = 500,
                 _ => {
                     warn!("unknown error:{:?}", e);
                     code = 500
@@ -129,10 +129,9 @@ fn build_response(r: Result<ResponseEntity>) -> Result<HttpResponse> {
     Ok(resp)
 }
 
-pub async fn handle_create_user<T>(
-    body: web::types::Json<AdminUser>, state: web::types::State<Arc<State<T>>>
-) -> Result<HttpResponse>
-where T: Db<Conn = PoolConnection<Sqlite>> {
+pub async fn handle_create_user(
+    body: web::types::Json<AdminUser>, state: web::types::State<Arc<State<Pool<Sqlite>>>>
+) -> Result<HttpResponse,errors::NtexResponseError> {
     let ret = create_user(body, state).await;
 
     let response = build_response(ret)?;
@@ -140,10 +139,9 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
     Ok(response)
 }
 
-pub async fn handle_server_query<T>(
-    body: web::types::Json<QueryRequest>, state: web::types::State<Arc<State<T>>>
-) -> Result<HttpResponse>
-where T: Db<Conn = PoolConnection<Sqlite>> {
+pub async fn handle_server_query(
+    body: web::types::Json<QueryRequest>, state: web::types::State<Arc<State<Pool<Sqlite>>>>
+) -> Result<HttpResponse,errors::NtexResponseError> {
     let ret = get_available_server(body, state).await;
 
     let response = build_response(ret)?;
@@ -158,10 +156,9 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
 //
 // Ok(response)
 // }
-pub async fn handle_server_update<T>(
-    body: web::types::Json<Node>, state: web::types::State<Arc<State<T>>>
-) -> Result<HttpResponse>
-where T: Db<Conn = PoolConnection<Sqlite>> {
+pub async fn handle_server_update(
+    body: web::types::Json<Node>, state: web::types::State<Arc<State<Pool<Sqlite>>>>
+) -> Result<HttpResponse,errors::NtexResponseError> {
     let ret = update_available_server(body, state).await;
 
     let response = build_response(ret)?;
