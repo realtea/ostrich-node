@@ -1,7 +1,7 @@
 #![allow(unreachable_code)]
 use app::{
     init::{acmed_service, service_init},
-    log_init, use_max_file_limit, DEFAULT_FALLBACK_ADDR, DEFAULT_LOG_PATH
+    log_init, use_max_file_limit,use_max_mem_limit, DEFAULT_FALLBACK_ADDR, DEFAULT_LOG_PATH
 };
 use async_std::task::sleep;
 use clap::{Arg, Command};
@@ -62,6 +62,7 @@ fn main() -> Result<()> {
     let proxy_addr = format!("{}:{}", "0.0.0.0", local_port);
 
     use_max_file_limit();
+    use_max_mem_limit();
 
     std::thread::spawn(|| {
         let _ = serve_acme_challenge();
@@ -98,12 +99,14 @@ fn main() -> Result<()> {
                 if !der_path.exists() || !der_key_path.exists() {
                     info!("tls certification file does not exist");
                     certs_validated = false
+                }else {
+                    let data = std::fs::read(der_file.as_str()).expect("Unable to read file");
+                    if x509_is_expired(der_file.as_str(), &data).unwrap() {
+                        info!("tls certification is expired");
+                        certs_validated = false
+                    }
                 }
-                let data = std::fs::read(der_file.as_str()).expect("Unable to read file");
-                if x509_is_expired(der_file.as_str(), &data).unwrap() {
-                    info!("tls certification is expired");
-                    certs_validated = false
-                }
+
                 if !certs_validated {
                     info!("tls certification invalidate");
                     loop {

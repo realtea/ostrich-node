@@ -34,7 +34,7 @@ isahc = {version = "1.7", features = ["json"]}
 #mimalloc = "0.1.26"
 #[target.'cfg(not(target_env = "msvc"))'.dependencies]
 #tikv-jemallocator = "0.4.0"
-rlimit = "0.6.2"
+rlimit = "0.8.3"
 flume = "0.10.9"
 async-channel = "1.6.1"
 trojan = {path = "../trojan"}

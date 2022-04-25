@@ -241,8 +241,163 @@ pub fn use_max_file_limit() {
     /// services (once supported) may need more.
     const DFLT_MAX_N_FILES: u64 = 16384;
 
-    match rlimit::utils::increase_nofile_limit(DFLT_MAX_N_FILES) {
+    match rlimit::increase_nofile_limit(DFLT_MAX_N_FILES) {
         Ok(n) => debug!("Increased process file limit to {}", n),
         Err(e) => warn!("Error while increasing file limit: {}", e)
     }
+}
+
+
+/// Set our current maximum-file limit to a large value, if we can.
+///
+/// Since we're going to be used as a proxy, we're likely to need a
+/// _lot_ of simultaneous sockets.
+///
+/// # Limitations
+///
+/// Maybe this should take a value from the configuration instead.
+///
+/// This doesn't actually do anything on windows.
+pub fn use_max_mem_limit() {
+    /// Default maximum value to set for our maximum-file limit.
+    ///
+    /// If the system supports more than this, we won't ask for it.
+    /// This should be plenty for proxy usage, though relays and onion
+    /// services (once supported) may need more.
+    const DFLT_MAX_MEM_LOCKS: u64 = 2053116928;
+
+    match increase_memlock_limit(DFLT_MAX_MEM_LOCKS) {
+        Ok(n) => debug!("Increased process mem limit to {}", n),
+        Err(e) => warn!("Error while increasing mem limit: {}", e)
+    }
+}
+/// Try to increase NOFILE limit and return the current soft limit.
+///
+/// `lim` is the expected limit which can be up to [`u64::MAX`].
+///
+/// This function does nothing if `RLIMIT_NOFILE` does not exist on current platform.
+///
+/// # Errors
+/// Returns an error if any syscall failed.
+pub fn increase_memlock_limit(lim: u64) -> std::io::Result<u64> {
+    // #begin-codegen RLIMIT_NOFILE
+    // generated from rust-lang/libc 6568dacc81b2dd2edae571ab97bbca94bc662595
+    #[cfg(any(
+    all(target_os = "linux", target_env = "gnu"),
+    all(
+    target_os = "linux",
+    target_env = "musl",
+    any(
+    target_arch = "x86",
+    target_arch = "mips",
+    target_arch = "powerpc",
+    target_arch = "hexagon",
+    target_arch = "arm"
+    )
+    ),
+    all(
+    target_os = "linux",
+    target_env = "musl",
+    any(
+    target_arch = "x86_64",
+    target_arch = "aarch64",
+    target_arch = "mips64",
+    target_arch = "powerpc64"
+    )
+    ),
+    all(
+    target_os = "linux",
+    target_env = "uclibc",
+    any(target_arch = "mips", target_arch = "mips64")
+    ),
+    any(target_os = "freebsd", target_os = "dragonfly"),
+    any(target_os = "macos", target_os = "ios"),
+    any(target_os = "openbsd", target_os = "netbsd"),
+    target_os = "android",
+    target_os = "emscripten",
+    target_os = "fuchsia",
+    target_os = "haiku",
+    target_os = "solarish",
+    ))]
+        // #end-codegen RLIMIT_NOFILE
+        {
+            use rlimit::Resource;
+
+            let (soft, hard) = Resource::MEMLOCK.get()?;
+            log::info!("before memlock setup: soft ({:?}) hard ({:?})",soft, hard);
+
+/*            if soft >= hard {
+                return Ok(hard);
+            }
+
+            if soft >= lim {
+                return Ok(soft);
+            }
+
+            let mut lim = lim;
+
+            lim = lim.min(hard);*/
+
+            // #begin-codegen KERN_MAXFILESPERPROC
+            // generated from rust-lang/libc 6568dacc81b2dd2edae571ab97bbca94bc662595
+            #[cfg(any(
+            any(target_os = "macos", target_os = "ios"),
+            target_os = "dragonfly",
+            target_os = "freebsd",
+            ))]
+                // #end-codegen KERN_MAXFILESPERPROC
+                {
+                    lim = lim.min(get_kern_max_files_per_proc()?)
+                }
+
+            Resource::MEMLOCK.set(lim, lim)?;
+            let (soft, hard) = Resource::MEMLOCK.get()?;
+            log::info!("after memlock setup: soft ({:?}) hard ({:?})",soft, hard);
+
+            Ok(lim)
+        }
+
+    // #begin-codegen not RLIMIT_NOFILE
+    // generated from rust-lang/libc 6568dacc81b2dd2edae571ab97bbca94bc662595
+    #[cfg(not(any(
+    all(target_os = "linux", target_env = "gnu"),
+    all(
+    target_os = "linux",
+    target_env = "musl",
+    any(
+    target_arch = "x86",
+    target_arch = "mips",
+    target_arch = "powerpc",
+    target_arch = "hexagon",
+    target_arch = "arm"
+    )
+    ),
+    all(
+    target_os = "linux",
+    target_env = "musl",
+    any(
+    target_arch = "x86_64",
+    target_arch = "aarch64",
+    target_arch = "mips64",
+    target_arch = "powerpc64"
+    )
+    ),
+    all(
+    target_os = "linux",
+    target_env = "uclibc",
+    any(target_arch = "mips", target_arch = "mips64")
+    ),
+    any(target_os = "freebsd", target_os = "dragonfly"),
+    any(target_os = "macos", target_os = "ios"),
+    any(target_os = "openbsd", target_os = "netbsd"),
+    target_os = "android",
+    target_os = "emscripten",
+    target_os = "fuchsia",
+    target_os = "haiku",
+    target_os = "solarish",
+    )))]
+        // #end-codegen not RLIMIT_NOFILE
+        {
+            Ok(lim)
+        }
 }

@@ -122,8 +122,8 @@ cat > /etc/ostrich/conf/ostrich.json <<-EOF
     "local_addr": "$your_domain",
     "local_ip": "$local_addr",
     "local_port": 443,
-    "remote_addr": "127.0.0.1",
-    "remote_port": 80,
+    "remote_addr": "$your_domain",
+    "remote_port": 9443,
     "password": [
         "$ostrich_passwd"
     ],
