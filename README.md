@@ -3,7 +3,7 @@
 
 ###### #1 start your node, then check if your node
 
-###./start.sh
+### ./start.sh
 
 ###### #2 create your user
-###./ostrich_cli  create  user  ****(replace this with your own username )
+### ./ostrich_cli  create  user  ****(replace this with your own username )
