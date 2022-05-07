@@ -74,7 +74,7 @@ fn main() -> Result<()> {
                 use futures::future::join_all;
                 let mut tasks = vec![];
                 tasks.append(&mut service_init(&config).await?);
-                tasks.append(&mut acmed_service(&config, &acmed_config, sender,acme_rx).await?);
+                tasks.append(&mut acmed_service(&config, &acmed_config, sender, acme_rx).await?);
                 join_all(tasks).await;
                 Ok(()) as Result<()>
             }

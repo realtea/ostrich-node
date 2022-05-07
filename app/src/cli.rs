@@ -28,6 +28,9 @@ fn main() -> Result<()> {
         build_cmd(matches, &mut data).await?;
 
         println!("data len: {}", data.len());
+        if data.len() == 0 {
+            println!("your command should not be empty, try again")
+        }
 
         let _ = timeout(Duration::from_secs(60), socket.send_to(data.as_ref(), DEFAULT_COMMAND_ADDR))
             .await
