@@ -74,8 +74,8 @@ elif [ "$release" == "ubuntu" ]; then
     red "==============="
     exit
     fi
-    systemctl stop ufw
-    systemctl disable ufw
+#    systemctl stop ufw
+#    systemctl disable ufw
     apt-get update
     apt dist-upgrade
 elif [ "$release" == "debian" ]; then
@@ -92,7 +92,7 @@ cat > /etc/apt/sources.list <<-EOF
     deb-src http://deb.debian.org/debian bullseye-updates main contrib non-free
 
 EOF
-    ufw disable
+#    ufw disable
     apt-get update
     apt dist-upgrade
     #tool for killall to restart service
@@ -115,7 +115,9 @@ if [ $real_addr == $local_addr ] ; then
     #设置伪装站
 
     ostrich_passwd=$(cat /dev/urandom | head -1 | md5sum | head -c 8)
-    mkdir -p /etc/ostrich/conf /etc/ostrich/certs/tmp /etc/ostrich/db
+    mkdir -p /etc/ostrich/conf /etc/ostrich/certs/tmp /etc/ostrich/db /etc/ostrich/html
+    wget https://github.com/V2RaySSR/Trojan/raw/master/web.zip
+    unzip  -d /etc/ostrich/html/ web.zip
 cat > /etc/ostrich/conf/ostrich.json <<-EOF
 {
     "run_type": "server",
@@ -123,7 +125,7 @@ cat > /etc/ostrich/conf/ostrich.json <<-EOF
     "local_ip": "$local_addr",
     "local_port": 443,
     "remote_addr": "$your_domain",
-    "remote_port": 9443,
+    "remote_port": 443,
     "password": [
         "$ostrich_passwd"
     ],
