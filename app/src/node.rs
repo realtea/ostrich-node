@@ -1,7 +1,7 @@
 #![allow(unreachable_code)]
 use app::{
     init::{acmed_service, service_init},
-    log_init, use_max_file_limit,use_max_mem_limit, DEFAULT_FALLBACK_ADDR, DEFAULT_LOG_PATH
+    log_init, use_max_file_limit, use_max_mem_limit, DEFAULT_FALLBACK_ADDR, DEFAULT_LOG_PATH
 };
 use async_std::task::sleep;
 use clap::{Arg, Command};
@@ -64,13 +64,8 @@ fn main() -> Result<()> {
     use_max_file_limit();
     use_max_mem_limit();
 
-    std::thread::spawn(|| {
-        let _ = serve_acme_challenge();
-        Ok(()) as Result<()>
-    });
-    let (acme_tx, acme_rx) = futures::channel::mpsc::channel::<AcmeStatus>(16);
-    let mut acme_start_tx = acme_tx.clone();
-    let acme_running_tx = acme_tx.clone();
+    let (mut acme_tx, acme_rx) = futures::channel::mpsc::channel::<AcmeStatus>(16);
+
     let builder = LocalExecutorBuilder::new(Placement::Fixed(0));
     let service_handle = builder
         .name("service")
@@ -79,7 +74,7 @@ fn main() -> Result<()> {
                 use futures::future::join_all;
                 let mut tasks = vec![];
                 tasks.append(&mut service_init(&config).await?);
-                tasks.append(&mut acmed_service(&config, &acmed_config, sender, acme_rx, acme_running_tx).await?);
+                tasks.append(&mut acmed_service(&config, &acmed_config, sender,acme_rx).await?);
                 join_all(tasks).await;
                 Ok(()) as Result<()>
             }
@@ -99,7 +94,7 @@ fn main() -> Result<()> {
                 if !der_path.exists() || !der_key_path.exists() {
                     info!("tls certification file does not exist");
                     certs_validated = false
-                }else {
+                } else {
                     let data = std::fs::read(der_file.as_str()).expect("Unable to read file");
                     if x509_is_expired(der_file.as_str(), &data).unwrap() {
                         info!("tls certification is expired");
@@ -131,7 +126,7 @@ fn main() -> Result<()> {
                     }
                 }
                 info!("send start signal");
-                acme_start_tx.send(AcmeStatus::Start).await.map_err(|e| {
+                acme_tx.send(AcmeStatus::Start).await.map_err(|e| {
                     error!("send acme start message: {:?}", e);
                     Error::Eor(anyhow::anyhow!("{:?}", e))
                 })?;

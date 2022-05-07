@@ -12,8 +12,8 @@ use service::{
 use sqlx::{pool::PoolConnection, Sqlite};
 use std::{collections::HashMap, path::Path};
 pub const DNS_CACHE_TIMEOUT: u64 = 3 * 60;
-pub const DEFAULT_FALLBACK_ADDR: &str = "127.0.0.1::80"; // TODO
-pub const DEFAULT_COMMAND_ADDR: &str = "127.0.0.1:12771";
+pub const DEFAULT_FALLBACK_ADDR: &str = "127.0.0.1:80"; // TODO
+pub const DEFAULT_COMMAND_ADDR:  &str = "127.0.0.1:12771";
 pub const DEFAULT_REGISTER_PORT: u16 = 9443;
 
 pub const DEFAULT_LOG_PATH: &str = "/etc/ostrich/logs/";
@@ -283,121 +283,99 @@ pub fn increase_memlock_limit(lim: u64) -> std::io::Result<u64> {
     // #begin-codegen RLIMIT_NOFILE
     // generated from rust-lang/libc 6568dacc81b2dd2edae571ab97bbca94bc662595
     #[cfg(any(
-    all(target_os = "linux", target_env = "gnu"),
-    all(
-    target_os = "linux",
-    target_env = "musl",
-    any(
-    target_arch = "x86",
-    target_arch = "mips",
-    target_arch = "powerpc",
-    target_arch = "hexagon",
-    target_arch = "arm"
-    )
-    ),
-    all(
-    target_os = "linux",
-    target_env = "musl",
-    any(
-    target_arch = "x86_64",
-    target_arch = "aarch64",
-    target_arch = "mips64",
-    target_arch = "powerpc64"
-    )
-    ),
-    all(
-    target_os = "linux",
-    target_env = "uclibc",
-    any(target_arch = "mips", target_arch = "mips64")
-    ),
-    any(target_os = "freebsd", target_os = "dragonfly"),
-    any(target_os = "macos", target_os = "ios"),
-    any(target_os = "openbsd", target_os = "netbsd"),
-    target_os = "android",
-    target_os = "emscripten",
-    target_os = "fuchsia",
-    target_os = "haiku",
-    target_os = "solarish",
+        all(target_os = "linux", target_env = "gnu"),
+        all(
+            target_os = "linux",
+            target_env = "musl",
+            any(
+                target_arch = "x86",
+                target_arch = "mips",
+                target_arch = "powerpc",
+                target_arch = "hexagon",
+                target_arch = "arm"
+            )
+        ),
+        all(
+            target_os = "linux",
+            target_env = "musl",
+            any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "mips64", target_arch = "powerpc64")
+        ),
+        all(target_os = "linux", target_env = "uclibc", any(target_arch = "mips", target_arch = "mips64")),
+        any(target_os = "freebsd", target_os = "dragonfly"),
+        any(target_os = "macos", target_os = "ios"),
+        any(target_os = "openbsd", target_os = "netbsd"),
+        target_os = "android",
+        target_os = "emscripten",
+        target_os = "fuchsia",
+        target_os = "haiku",
+        target_os = "solarish",
     ))]
-        // #end-codegen RLIMIT_NOFILE
+    // #end-codegen RLIMIT_NOFILE
+    {
+        use rlimit::Resource;
+
+        let (soft, hard) = Resource::MEMLOCK.get()?;
+        log::info!("before memlock setup: soft ({:?}) hard ({:?})", soft, hard);
+
+        //            if soft >= hard {
+        // return Ok(hard);
+        // }
+        //
+        // if soft >= lim {
+        // return Ok(soft);
+        // }
+        //
+        // let mut lim = lim;
+        //
+        // lim = lim.min(hard);
+
+        // #begin-codegen KERN_MAXFILESPERPROC
+        // generated from rust-lang/libc 6568dacc81b2dd2edae571ab97bbca94bc662595
+        #[cfg(any(any(target_os = "macos", target_os = "ios"), target_os = "dragonfly", target_os = "freebsd",))]
+        // #end-codegen KERN_MAXFILESPERPROC
         {
-            use rlimit::Resource;
-
-            let (soft, hard) = Resource::MEMLOCK.get()?;
-            log::info!("before memlock setup: soft ({:?}) hard ({:?})",soft, hard);
-
-/*            if soft >= hard {
-                return Ok(hard);
-            }
-
-            if soft >= lim {
-                return Ok(soft);
-            }
-
-            let mut lim = lim;
-
-            lim = lim.min(hard);*/
-
-            // #begin-codegen KERN_MAXFILESPERPROC
-            // generated from rust-lang/libc 6568dacc81b2dd2edae571ab97bbca94bc662595
-            #[cfg(any(
-            any(target_os = "macos", target_os = "ios"),
-            target_os = "dragonfly",
-            target_os = "freebsd",
-            ))]
-                // #end-codegen KERN_MAXFILESPERPROC
-                {
-                    lim = lim.min(get_kern_max_files_per_proc()?)
-                }
-
-            Resource::MEMLOCK.set(lim, lim)?;
-            let (soft, hard) = Resource::MEMLOCK.get()?;
-            log::info!("after memlock setup: soft ({:?}) hard ({:?})",soft, hard);
-
-            Ok(lim)
+            lim = lim.min(get_kern_max_files_per_proc()?)
         }
+
+        Resource::MEMLOCK.set(lim, lim)?;
+        let (soft, hard) = Resource::MEMLOCK.get()?;
+        log::info!("after memlock setup: soft ({:?}) hard ({:?})", soft, hard);
+
+        Ok(lim)
+    }
 
     // #begin-codegen not RLIMIT_NOFILE
     // generated from rust-lang/libc 6568dacc81b2dd2edae571ab97bbca94bc662595
     #[cfg(not(any(
-    all(target_os = "linux", target_env = "gnu"),
-    all(
-    target_os = "linux",
-    target_env = "musl",
-    any(
-    target_arch = "x86",
-    target_arch = "mips",
-    target_arch = "powerpc",
-    target_arch = "hexagon",
-    target_arch = "arm"
-    )
-    ),
-    all(
-    target_os = "linux",
-    target_env = "musl",
-    any(
-    target_arch = "x86_64",
-    target_arch = "aarch64",
-    target_arch = "mips64",
-    target_arch = "powerpc64"
-    )
-    ),
-    all(
-    target_os = "linux",
-    target_env = "uclibc",
-    any(target_arch = "mips", target_arch = "mips64")
-    ),
-    any(target_os = "freebsd", target_os = "dragonfly"),
-    any(target_os = "macos", target_os = "ios"),
-    any(target_os = "openbsd", target_os = "netbsd"),
-    target_os = "android",
-    target_os = "emscripten",
-    target_os = "fuchsia",
-    target_os = "haiku",
-    target_os = "solarish",
+        all(target_os = "linux", target_env = "gnu"),
+        all(
+            target_os = "linux",
+            target_env = "musl",
+            any(
+                target_arch = "x86",
+                target_arch = "mips",
+                target_arch = "powerpc",
+                target_arch = "hexagon",
+                target_arch = "arm"
+            )
+        ),
+        all(
+            target_os = "linux",
+            target_env = "musl",
+            any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "mips64", target_arch = "powerpc64")
+        ),
+        all(target_os = "linux", target_env = "uclibc", any(target_arch = "mips", target_arch = "mips64")),
+        any(target_os = "freebsd", target_os = "dragonfly"),
+        any(target_os = "macos", target_os = "ios"),
+        any(target_os = "openbsd", target_os = "netbsd"),
+        target_os = "android",
+        target_os = "emscripten",
+        target_os = "fuchsia",
+        target_os = "haiku",
+        target_os = "solarish",
     )))]
-        // #end-codegen not RLIMIT_NOFILE
-        {
-            Ok(lim)
-        }
+    // #end-codegen not RLIMIT_NOFILE
+    {
+        Ok(lim)
+    }
 }

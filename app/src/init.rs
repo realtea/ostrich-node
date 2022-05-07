@@ -17,10 +17,10 @@ use service::{
     },
     db,
     db::{create_db, model::EntityId},
-    https::ntex::serve_register,
     AcmeStatus
 };
 use std::{env, fs, ops::Sub, sync::Arc, time::Duration};
+use service::http::ntex::serve_acme_challenge;
 use trojan::{config::Config, tls::certs::x509_is_expired};
 
 pub async fn service_init(config: &Config) -> Result<Vec<JoinHandle<Result<()>>>> {
@@ -99,12 +99,11 @@ pub async fn service_init(config: &Config) -> Result<Vec<JoinHandle<Result<()>>>
 }
 pub async fn acmed_service(
     config: &Config, acmed_config: &AcmeConfig, sender: async_channel::Sender<bool>,
-    mut acme_rx: futures::channel::mpsc::Receiver<AcmeStatus>, acme_tx: futures::channel::mpsc::Sender<AcmeStatus>
+    mut acme_rx: futures::channel::mpsc::Receiver<AcmeStatus>
 ) -> Result<Vec<JoinHandle<Result<()>>>> {
     use async_io::Timer;
     use futures::FutureExt;
 
-    let mut tls_server = None;
     let tasks = vec![];
     let mut timer = Timer::interval(Duration::from_secs(604800));
 
@@ -134,6 +133,11 @@ pub async fn acmed_service(
     let register_db = db.clone();
     let state = Arc::new(State::new(register_db));
     let cleanup_state = state.clone();
+
+    std::thread::spawn(move || {
+        let _ = serve_acme_challenge(state);
+        Ok(()) as Result<()>
+    });
     let der_file = config.ssl.server().unwrap().cert.to_owned();
     let key_file = config.ssl.server().unwrap().key.to_owned();
 
@@ -152,18 +156,8 @@ pub async fn acmed_service(
                                       info!( "start signal has been received");
                                       let der_file = der_file.clone();
                                       let key_file = key_file.clone();
-                                      let state = state.clone();
                                       let db = db.clone();
                                       let cleanup_state = cleanup_state.clone();
-                                      let acme_tx = acme_tx.clone();
-                          /*                spawn_local(async move {*/
-                                              std::thread::spawn(move ||{
-                                                   serve_register(DEFAULT_REGISTER_PORT,der_file.clone(), key_file.clone(), state.clone(), acme_tx.clone())?;
-                                                    Ok(()) as Result<()>
-                                               });
-                                              // });
-                                          // })
-                                          // .detach();
                                           spawn_local(async move {
                                               use async_std::net::UdpSocket;
                                               let socket = UdpSocket::bind(DEFAULT_COMMAND_ADDR).await.map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
@@ -234,11 +228,8 @@ pub async fn acmed_service(
 
                                   }
                                        AcmeStatus::Running(server) => {
-                                      info!( "running signal has been received");
-                                      tls_server = Some(server)
                                   }
                                        AcmeStatus::Reload => {
-                /*                          tls_server.stop(true).await;*/
                                   }
                                   }
                           }
@@ -249,9 +240,6 @@ pub async fn acmed_service(
                           let acmed_config = acmed_config.clone();
                           let config = config.clone();
                           let sender = sender.clone();
-                          let state = state.clone();
-                          let tls_server = tls_server.clone();
-                          let acme_tx = acme_tx.clone();
 
                           spawn_local(async move {
                           let der_file = config.ssl.server().unwrap().cert.to_owned();
@@ -262,7 +250,6 @@ pub async fn acmed_service(
                               loop {
                                   let der_file = der_file.clone();
                                   let key_file = key_file.clone();
-                                  let state = state.clone();
                                   // sleep(Duration::from_secs(604800)).await; // checking every week
                                                                             // sleep(Duration::from_secs(90)).await; // for test
                                   let der_path = std::path::Path::new(der_file.as_str());
@@ -307,19 +294,6 @@ pub async fn acmed_service(
                                                   Error::Eor(anyhow::anyhow!("{:?}", e))
                                               })?;
                                           }
-                                          if tls_server.is_some(){
-                                                  tls_server.as_ref().unwrap().stop(true).await;
-                                           }
-                                          let acme_tx = acme_tx.clone();
-                                          // spawn_local(async move {
-                                               std::thread::spawn(move ||{
-                                                   serve_register(DEFAULT_REGISTER_PORT,der_file.clone(), key_file.clone(), state.clone(), acme_tx.clone())?;
-                                                     Ok(()) as Result<()>
-                                              });
-
-                                              // });
-        /*                                  })
-                                          .detach();*/
                                           info!("reload signal has been sent")
                                       }
                                   }

@@ -1,4 +1,4 @@
-#RUN AS ROOT
+#RUN AS ROOT and MAKE SURE PORTS: 80,443, 9443 OF YOUR SERVER ARE OPEN TO PUBLIC
 ###### #0 run the following command on your terminal
 ### ./install.sh
 
