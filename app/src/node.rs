@@ -6,10 +6,8 @@ use app::{
 use async_std::task::sleep;
 use clap::{Arg, Command};
 use errors::{Error, Result};
-use futures::SinkExt;
 use glommio::{enclose, CpuSet, LocalExecutorBuilder, LocalExecutorPoolBuilder, Placement, PoolPlacement};
 use log::{error, info, warn};
-use service::{http::ntex::serve_acme_challenge, AcmeStatus};
 use std::{fs, path::Path, time::Duration};
 use trojan::{config::set_config, generate_authenticator, tls::certs::x509_is_expired, ProxyBuilder};
 // use mimalloc::MiMalloc;
@@ -64,7 +62,7 @@ fn main() -> Result<()> {
     use_max_file_limit();
     use_max_mem_limit();
 
-    let (mut acme_tx, acme_rx) = futures::channel::mpsc::channel::<AcmeStatus>(16);
+    let ( service_tx, service_rx) = futures::channel::oneshot::channel::<()>();
 
     let builder = LocalExecutorBuilder::new(Placement::Fixed(0));
     let service_handle = builder
@@ -73,20 +71,21 @@ fn main() -> Result<()> {
             async move {
                 use futures::future::join_all;
                 let mut tasks = vec![];
-                tasks.append(&mut service_init(&config).await?);
-                tasks.append(&mut acmed_service(&config, &acmed_config, sender, acme_rx).await?);
+                tasks.append(&mut service_init(&config,service_tx).await?);
+                tasks.append(&mut acmed_service(&config, &acmed_config, sender).await?);
                 join_all(tasks).await;
                 Ok(()) as Result<()>
             }
         })
         .unwrap();
 
-    std::thread::sleep(Duration::from_secs(7));
     let builder = LocalExecutorBuilder::new(Placement::Fixed(0));
     let acme_handle = builder
         .name("acme_service")
         .spawn(move || {
             async move {
+                service_rx.await.unwrap();
+                glommio::timer::sleep(std::time::Duration::from_secs(1)).await;
                 let der_path = std::path::Path::new(der_file.as_str());
                 let der_key_path = std::path::Path::new(key_file.as_str());
                 let mut certs_validated = true;
@@ -125,11 +124,6 @@ fn main() -> Result<()> {
                         }
                     }
                 }
-                info!("send start signal");
-                acme_tx.send(AcmeStatus::Start).await.map_err(|e| {
-                    error!("send acme start message: {:?}", e);
-                    Error::Eor(anyhow::anyhow!("{:?}", e))
-                })?;
                 Ok(()) as Result<()>
             }
         })
@@ -143,8 +137,6 @@ fn main() -> Result<()> {
         .spin_before_park(std::time::Duration::from_millis(10))
         .on_all_shards(enclose!((config) move|| {
             async move {
-                // let id = glommio-raw::executor().id();
-                // println!("Starting executor {}", id);
                 proxy.start(&config,receiver, Duration::from_secs(60),).await.unwrap();
             }
         }))

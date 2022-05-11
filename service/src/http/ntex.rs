@@ -38,7 +38,7 @@ async fn p404() -> HttpResponse {
     HttpResponse::NotFound().body(html)
 }
 #[ntex::main]
-pub async fn serve_acme_challenge(state: Arc<State<Pool<Sqlite>>>) -> std::io::Result<()> {
+pub async fn serve_acme_challenge(state: Arc<State<Pool<Sqlite>>>, service_tx: futures::channel::oneshot::Sender<()>) -> std::io::Result<()> {
     let srv = web::server(move || {
         App::new()
             // enable logger
@@ -70,6 +70,7 @@ pub async fn serve_acme_challenge(state: Arc<State<Pool<Sqlite>>>) -> std::io::R
     .bind("0.0.0.0:80")?
     .disable_signals()
     .run();
+    service_tx.send(()).unwrap();
     // run future
     srv.await
 }

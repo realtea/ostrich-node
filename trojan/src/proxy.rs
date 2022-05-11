@@ -94,10 +94,10 @@ impl ProxyBuilder {
                             })
                             .collect::<Vec<_>>();
                         let remains = endpoint.len();
-                        error!("expired connections  num: {}",expired.len());
+                        info!("expired connections  num: {}",expired.len());
                         while let Some((_k,   w)) = expired.pop() {
                             // if w.is_some() {
-                            error!("starting to terminate task from client connection: {:?}",&w.addr);
+                            info!("starting to terminate task from client connection: {:?}",&w.addr);
                             std::mem::drop(w.terminator);
                             // w.stream.close().await?;
                             // let _ = w.task.await.map_err(|e|{
@@ -105,10 +105,10 @@ impl ProxyBuilder {
                             //     Error::Eor(anyhow::anyhow!("{:?}",e))
                             // })?;
                             // w.task.abort();
-                            error!("task terminated from client connection: {:?}",&w.addr)
+                            info!("task terminated from client connection: {:?}",&w.addr)
                             // }
                         }
-                        error!("connections remained num: {}",remains);
+                        info!("connections remained num: {}",remains);
                     },
                     session =  connection_activity_rx.next().fuse() =>{
                         match  session{
@@ -141,7 +141,7 @@ impl ProxyBuilder {
                                                 //     error!("wait task exit error: {:?}",e);
                                                 //     Error::Eor(anyhow::anyhow!("{:?}",e))
                                                 // })?;
-                                                error!("disconnected from client connection: {:?}",&connection.addr)
+                                                info!("disconnected from client connection: {:?}",&connection.addr)
                                                 // connection.task.abort();
                                             },
                                             None =>{
@@ -221,9 +221,9 @@ impl ProxyBuilder {
                                                             log::error!("send disconnected message error: {:?}", e);
                                                             Error::Eor(anyhow::anyhow!("#5 {:?}", e))
                                                         })?;
-                                                        error!("task exit from client connection processor: {:}",&source)
+                                                        info!("task exit from client connection processor: {:}",&source)
                                                     },
-                                                    Either::Right(_) => {error!("task exit from client connection terminator: {:}",&source)},
+                                                    Either::Right(_) => {info!("task exit from client connection terminator: {:}",&source)},
                                                 }
                                                 Ok(()) as Result<()>
                                             }

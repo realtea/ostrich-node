@@ -23,7 +23,7 @@ use service::{
 use std::{env, fs, ops::Sub, sync::Arc, time::Duration};
 use trojan::{config::Config, tls::certs::x509_is_expired};
 
-pub async fn service_init(config: &Config) -> Result<Vec<JoinHandle<Result<()>>>> {
+pub async fn service_init(config: &Config, service_tx: futures::channel::oneshot::Sender<()>) -> Result<Vec<JoinHandle<Result<()>>>> {
     let mut tasks = vec![];
 
     let remote_addr = config.remote_addr.clone();
@@ -94,7 +94,7 @@ pub async fn service_init(config: &Config) -> Result<Vec<JoinHandle<Result<()>>>
     let cleanup_state = state.clone();
 
     std::thread::spawn(move || {
-        let _ = serve_acme_challenge(state);
+        let _ = serve_acme_challenge(state, service_tx);
         Ok(()) as Result<()>
     });
 
@@ -207,7 +207,7 @@ pub async fn service_init(config: &Config) -> Result<Vec<JoinHandle<Result<()>>>
 }
 pub async fn acmed_service(
     config: &Config, acmed_config: &AcmeConfig, sender: async_channel::Sender<bool>,
-    mut acme_rx: futures::channel::mpsc::Receiver<AcmeStatus>
+    // mut acme_rx: futures::channel::mpsc::Receiver<AcmeStatus>
 ) -> Result<Vec<JoinHandle<Result<()>>>> {
     use async_io::Timer;
     use futures::FutureExt;
