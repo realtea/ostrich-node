@@ -1,6 +1,6 @@
 #![allow(unreachable_code)]
 #![warn(unused_must_use)]
-use crate::{build_cmd_response, create_cmd_user, DEFAULT_COMMAND_ADDR, DEFAULT_REGISTER_PORT};
+use crate::{build_cmd_response, create_cmd_user, DEFAULT_COMMAND_ADDR, DEFAULT_REGISTER_PORT, delete_cmd_user};
 use acmed::{config::Config as AcmeConfig, errors::Context, sandbox};
 use bytes::BytesMut;
 use command::frame::Frame;
@@ -139,7 +139,29 @@ pub async fn service_init(config: &Config, service_tx: futures::channel::oneshot
                             .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
                         info!("Sent {} out of {} bytes to {}", sent, n, peer);
                     }
+                    Frame::DeleteUserRequest => {
+                        info!("DeleteUserRequest");
+                        let cmd_db = db.acquire().await?;
+
+                        Frame::unpack_msg_frame(&mut data)?;
+                        //
+                        info!("{:?}", String::from_utf8(data.to_ascii_lowercase().to_vec()));
+                        let token = String::from_utf8(data.to_ascii_lowercase().to_vec())
+                            .map_err(|e| Error::Eor(anyhow::anyhow!("{}", e)))?;
+                        // cmd_db.create_user(token,1 as EntityId).await.unwrap();
+
+                        let ret = delete_cmd_user(cmd_db, token).await;
+                        let mut resp = BytesMut::new();
+                        build_cmd_response(ret, &mut resp)?;
+
+                        let sent = socket
+                            .send_to(resp.as_ref(), &peer)
+                            .await
+                            .map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
+                        info!("Sent {} out of {} bytes to {}", sent, n, peer);
+                    }
                     Frame::CreateUserResponse => {}
+                    Frame::DeleteUserResponse => {}
                     Frame::UnKnown => {}
                 }
             }
@@ -177,7 +199,7 @@ pub async fn service_init(config: &Config, service_tx: futures::channel::oneshot
 
     tasks.push(
         spawn_local(async move {
-            let addr = NodeAddress { host: host.clone(), ip, port, passwd };
+            let addr = NodeAddress { host: host.clone(), ip, port, passwd, country: "".to_string(), region: "".to_string() };
             let total = 50;
             loop {
                 sleep(Duration::from_secs(2 * 60 + 57)).await;

@@ -20,6 +20,11 @@ fn main() -> Result<()> {
                     .arg(Arg::new("username")
                         // .about("The username to create")
                         .required(true))))
+        .subcommand(Command::new("delete").about("create command").subcommand(Command::new("user")
+            // .about("create a new user")
+            .arg(Arg::new("username")
+                // .about("The username to create")
+                .required(true))))
         .get_matches();
 
     task::block_on(async {
@@ -44,7 +49,7 @@ fn main() -> Result<()> {
 
         match Frame::get_frame_type(&data.as_ref()) {
             Frame::CreateUserRequest => {}
-            Frame::CreateUserResponse => {
+            Frame::CreateUserResponse | Frame::DeleteUserResponse => {
                 Frame::unpack_msg_frame(&mut data).unwrap();
                 let resp: ResponseBody<ResponseEntity> = serde_json::from_slice(data.as_ref()).unwrap();
                 let t = resp.ret;

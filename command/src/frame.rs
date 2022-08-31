@@ -4,36 +4,44 @@ use crc::{Crc, CRC_64_ECMA_182};
 
 const CRC: Crc<u64> = Crc::<u64>::new(&CRC_64_ECMA_182);
 pub enum Frame {
-    CreateUserRequest = 0x00,
-    CreateUserResponse = 0x01,
+    CreateUserRequest = 0x0000,
+    CreateUserResponse = 0x0001,
+    DeleteUserRequest = 0x0010,
+    DeleteUserResponse = 0x0011,
     UnKnown = 0x16
 }
 
-impl From<u8> for Frame {
-    fn from(item: u8) -> Self {
+impl From<u16> for Frame {
+    fn from(item: u16) -> Self {
         let frame = match item {
-            0x00 => Frame::CreateUserRequest,
-            0x01 => Frame::CreateUserResponse,
+            0x0000 => Frame::CreateUserRequest,
+            0x0001 => Frame::CreateUserResponse,
+            0x0010 => Frame::DeleteUserRequest,
+            0x0011=> Frame::DeleteUserResponse,
             _ => Frame::UnKnown
         };
         frame
     }
 }
-impl From<Frame> for u8 {
-    fn from(item: Frame) -> u8 {
+impl From<Frame> for u16 {
+    fn from(item: Frame) -> u16 {
         let u8_frame = match item {
-            Frame::CreateUserRequest => 0x00,
-            Frame::CreateUserResponse => 0x01,
+            Frame::CreateUserRequest => 0x0000,
+            Frame::CreateUserResponse => 0x0001,
+            Frame::DeleteUserRequest => 0x0010,
+            Frame::DeleteUserResponse => 0x0011,
             Frame::UnKnown => 0x16
         };
         u8_frame
     }
 }
-impl From<&Frame> for u8 {
-    fn from(item: &Frame) -> u8 {
+impl From<&Frame> for u16 {
+    fn from(item: &Frame) -> u16 {
         let u8_frame = match *item {
-            Frame::CreateUserRequest => 0x00,
-            Frame::CreateUserResponse => 0x01,
+            Frame::CreateUserRequest => 0x0000,
+            Frame::CreateUserResponse => 0x0001,
+            Frame::DeleteUserRequest => 0x0010,
+            Frame::DeleteUserResponse => 0x0011,
             Frame::UnKnown => 0x16
         };
         u8_frame
@@ -45,7 +53,7 @@ impl Frame {
     where B: AsRef<[u8]> {
         let mut data_ref = data.as_ref().clone();
         data_ref.advance(4 + 8);
-        let frame = BigEndian::read_uint(data_ref.as_ref(), 1) as u8;
+        let frame = BigEndian::read_u16(data_ref.as_ref());
         frame.into()
     }
 
@@ -60,10 +68,10 @@ impl Frame {
         let mut packet = BytesMut::new();
         let sum = CRC.checksum(data.as_ref());
         //        packet.reserve(data.as_ref().len() + std::mem::size_of_val(&sum) + 2 + 1);
-        packet.reserve(data.as_ref().len() + std::mem::size_of_val(&sum) + 4 + 1);
+        packet.reserve(data.as_ref().len() + std::mem::size_of_val(&sum) + 4 + 2 /*fame type*/);
         packet.put_u32(data.len() as u32);
         packet.put_u64(sum);
-        packet.put_u8(self.into());
+        packet.put_u16(self.into());
         packet.put(data.as_ref());
         packet.freeze()
     }
@@ -89,7 +97,7 @@ impl Frame {
         let sum = BigEndian::read_u64(data.as_ref()) as u64;
         data.advance(std::mem::size_of_val(&sum));
         //        let data = data.to_vec();
-        data.advance(1);
+        data.advance(2);//frame type
 
         let check = CRC.checksum(data.as_ref());
         //        dbg!(sum == check);

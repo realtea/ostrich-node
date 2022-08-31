@@ -51,7 +51,19 @@ VALUES ( $1, $2,$3 );
         // .last_insert_rowid();
         Ok(())
     }
-
+    async fn delete_user(&mut self, token: String) -> Result<()> {
+        sqlx::query(
+            r#"
+DELETE FROM users (user_id )
+VALUES ( $1);
+            "#
+        )
+            .bind(token)
+            .execute(self)
+            .await?;
+        // .last_insert_rowid();
+        Ok(())
+    }
     async fn get_user_by_id(&mut self, user_id: EntityId) -> Result<UserEntity> {
         let user = sqlx::query_as(
             r#"

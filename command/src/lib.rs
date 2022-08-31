@@ -28,6 +28,25 @@ pub async fn build_cmd<'a>(args: ArgMatches, data: &mut BytesMut) -> anyhow::Res
                 }
             }
         }
+
+        Some(("delete", delete_matches)) => {
+            // Now we have a reference to clone's matches
+            match delete_matches.subcommand() {
+                None => {}
+                Some(("user", user_matches)) => {
+                    let username = user_matches.value_of("username").expect("username was empty");
+                    println!("username you wanna delete: {:?}", &username);
+                    let frame = Frame::DeleteUserRequest.pack_msg_frame(username.as_bytes());
+                    Frame::unpack_msg_frame(&mut BytesMut::from(frame.as_ref()))?;
+                    data.reserve(frame.len());
+                    data.extend_from_slice(frame.as_ref());
+                }
+                _ => {
+                    unreachable!()
+                }
+            }
+        }
+
         None => println!("No subcommand was used"), // If no subcommand was used it'll match the tuple ("", None)
         _ => {
             unreachable!()

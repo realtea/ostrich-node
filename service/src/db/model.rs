@@ -14,6 +14,7 @@ pub struct UserEntity {
 #[async_trait]
 pub trait ProvideAuthn {
     async fn create_user(&mut self, token: String, role: EntityId) -> Result<()>;
+    async fn delete_user(&mut self, userid: String) -> Result<()>;
     async fn get_user_by_id(&mut self, user_id: EntityId) -> Result<UserEntity>;
     async fn get_user_by_token(&mut self, token: &str) -> Result<UserEntity>;
     // async fn get_user_by_email(&mut self, email: &str) -> Result<UserEntity>;

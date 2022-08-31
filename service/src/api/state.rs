@@ -9,7 +9,11 @@ pub struct NodeAddress {
     pub host: String,
     pub ip: String,
     pub port: u16,
-    pub passwd: String
+    pub passwd: String,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub country: String,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub region: String,
 }
 
 // pub enum Status{

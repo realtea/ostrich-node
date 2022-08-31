@@ -29,7 +29,17 @@ pub async fn create_cmd_user(mut db: PoolConnection<Sqlite>, token: String, role
 
     Ok(new)
 }
+pub async fn delete_cmd_user(mut db: PoolConnection<Sqlite>, token: String) -> Result<ResponseEntity> {
+    if token.len() > USER_TOKEN_MAX_LEN {
+        return Err(Error::from(ServiceError::IllegalToken))
+    }
 
+    db.delete_user(token.clone()).await.map_err(|_| ServiceError::TokenOccupied)?;
+
+    let new = ResponseEntity::User(User { token, role: 1 });
+
+    Ok(new)
+}
 pub fn build_cmd_response(ret: Result<ResponseEntity>, data: &mut BytesMut) -> Result<()> {
     let mut code = 200;
     let content = match ret {
