@@ -42,7 +42,7 @@ acmed = {path = "../acmed"}
 glommio = {git = "https://github.com/DataDog/glommio.git"}
 
 #tls
-futures-rustls = {path = "../futures-rustls",features =  ["early-data", "dangerous_configuration"] }
+futures-rustls = {path = "../futures-rustls"}
 rustls = "0.20.4"
 
 #pem = "1.0.2"
