@@ -1,5 +1,5 @@
 use crate::config::Config;
-use rustls::{self, server::NoClientAuth};
+use rustls::{self, ALL_VERSIONS, server::NoClientAuth};
 use rustls_pemfile;
 use std::{
     fs,
@@ -34,21 +34,21 @@ fn lookup_suites(suites: &String) -> Vec<rustls::SupportedCipherSuite> {
     out
 }
 
-// /// Make a vector of protocol versions named in `versions`
-// fn lookup_versions(versions: &[String]) -> Vec<&'static rustls::SupportedProtocolVersion> {
-// let mut out = Vec::new();
-//
-// for vname in versions {
-// let version = match vname.as_ref() {
-// "1.2" => &rustls::version::TLS12,
-// "1.3" => &rustls::version::TLS13,
-// _ => panic!("cannot look up version '{}', valid are '1.2' and '1.3'", vname)
-// };
-// out.push(version);
-// }
-//
-// out
-// }
+/// Make a vector of protocol versions named in `versions`
+fn lookup_versions(versions: &[String]) -> Vec<&'static rustls::SupportedProtocolVersion> {
+    let mut out = Vec::new();
+
+    for vname in versions {
+        let version = match vname.as_ref() {
+            "1.2" => &rustls::version::TLS12,
+            "1.3" => &rustls::version::TLS13,
+            _ => panic!("cannot look up version '{}', valid are '1.2' and '1.3'", vname)
+        };
+        out.push(version);
+    }
+
+    out
+}
 
 pub fn load_certs(filename: &str) -> Vec<rustls::Certificate> {
     let certfile = fs::File::open(filename).expect("cannot open certificate file");
@@ -102,11 +102,13 @@ pub fn make_config(config: &Config) -> rustls::ServerConfig {
     let client_auth = NoClientAuth::new();
 
 
-    let suites = if !config.ssl.server().unwrap().cipher_tls13.is_empty() {
+    let suites = /*if !config.ssl.server().unwrap().cipher_tls13.is_empty() {
         lookup_suites(&config.ssl.server().unwrap().cipher_tls13)
     } else {
         rustls::ALL_CIPHER_SUITES.to_vec()
     };
+*/
+        rustls::ALL_CIPHER_SUITES.to_vec();
 
     let versions =
         //     if !args.flag_protover.is_empty() {
@@ -114,7 +116,8 @@ pub fn make_config(config: &Config) -> rustls::ServerConfig {
         // } else {
         //     rustls::ALL_VERSIONS.to_vec()
         // };
-        vec![&rustls::version::TLS13];
+        // vec![&rustls::version::TLS13];
+        ALL_VERSIONS;
 
     let certs = load_certs(config.ssl.server().unwrap().cert.as_str());
     let privkey = load_private_key(config.ssl.server().unwrap().key.as_str());
@@ -145,7 +148,6 @@ pub fn make_config(config: &Config) -> rustls::ServerConfig {
 
     tls_config
 }
-
 
 pub mod certs {
     use errors::Result;
