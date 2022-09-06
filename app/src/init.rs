@@ -1,11 +1,12 @@
 #![allow(unreachable_code)]
 #![warn(unused_must_use)]
-use crate::{build_cmd_response, create_cmd_user, DEFAULT_COMMAND_ADDR, DEFAULT_REGISTER_PORT, delete_cmd_user};
+use crate::{build_cmd_response, create_cmd_user, delete_cmd_user, DEFAULT_COMMAND_ADDR, DEFAULT_REGISTER_PORT};
 use acmed::{config::Config as AcmeConfig, errors::Context, sandbox};
 use bytes::BytesMut;
 use command::frame::Frame;
 use errors::{Error, Result};
 use futures::{select, StreamExt};
+use geoip2::{City, Reader};
 use glommio::{spawn_local, task::JoinHandle, timer::sleep};
 use isahc::{prelude::*, Request};
 use log::{info, warn};
@@ -20,10 +21,13 @@ use service::{
     http::ntex::serve_acme_challenge,
     AcmeStatus
 };
-use std::{env, fs, ops::Sub, sync::Arc, time::Duration};
+use std::{env, fs, net::IpAddr, ops::Sub, str::FromStr, sync::Arc, time::Duration};
+use service::api::state::{NodeAddressV2, NodeV2};
 use trojan::{config::Config, tls::certs::x509_is_expired};
 
-pub async fn service_init(config: &Config, service_tx: futures::channel::oneshot::Sender<()>) -> Result<Vec<JoinHandle<Result<()>>>> {
+pub async fn service_init(
+    config: &Config, service_tx: futures::channel::oneshot::Sender<()>
+) -> Result<Vec<JoinHandle<Result<()>>>> {
     let mut tasks = vec![];
 
     let remote_addr = config.remote_addr.clone();
@@ -48,6 +52,36 @@ pub async fn service_init(config: &Config, service_tx: futures::channel::oneshot
         }
     }
     info!("public ip {:?}", public_ip);
+
+    let buffer = fs::read("/etc/ostrich/geo/GeoLite2-City.mmdb").unwrap();
+    let reader = Reader::<City>::from_bytes(&buffer).unwrap();
+    let loacl_public_ip = IpAddr::from_str(&public_ip).unwrap();
+    let local_geo = reader.lookup(loacl_public_ip).unwrap();
+
+    let local_country = local_geo
+        .country
+        .as_ref()
+        .ok_or(Error::Eor(anyhow::anyhow!("cant lookup country")))?
+        .names
+        .as_ref()
+        .ok_or(Error::Eor(anyhow::anyhow!("cant lookup country names")))?
+        .get("zh-CN")
+        .ok_or(Error::Eor(anyhow::anyhow!("cant lookup country cn name")))?
+        .to_owned();
+    let local_city = local_geo
+        .city
+        .as_ref()
+        .ok_or(Error::Eor(anyhow::anyhow!("cant lookup city")))?
+        .names
+        .as_ref()
+        .ok_or(Error::Eor(anyhow::anyhow!("cant lookup city names")))?
+        .get("zh-CN")
+        .ok_or(Error::Eor(anyhow::anyhow!("cant lookup city cn name")))?
+        .to_owned();
+
+    info!("local country: {:#?}", &local_country);
+    info!("local city: {:#?}", &local_city);
+
     let remote_addr = if remote_addr.is_empty()
         || remote_addr == "127.0.0.1"
         || remote_addr == "0.0.0.0"
@@ -199,11 +233,11 @@ pub async fn service_init(config: &Config, service_tx: futures::channel::oneshot
 
     tasks.push(
         spawn_local(async move {
-            let addr = NodeAddress { host: host.clone(), ip, port, passwd, country: "".to_string(), region: "".to_string() };
+            let addr = NodeAddressV2 { host: host.clone(), ip, port, passwd, country: local_country, city: local_city };
             let total = 50;
             loop {
                 sleep(Duration::from_secs(2 * 60 + 57)).await;
-                let node = Node { addr: addr.clone(), count: 0, total, last_update: chrono::Utc::now().timestamp() };
+                let node = NodeV2 { addr: addr.clone(), count: 0, total, last_update: chrono::Utc::now().timestamp() };
                 info!("reporting node: {:?}", node);
                 let body = serde_json::to_vec(&node).map_err(|e| Error::Eor(anyhow::anyhow!("{:?}", e)))?;
                 // Create a request.
@@ -228,8 +262,9 @@ pub async fn service_init(config: &Config, service_tx: futures::channel::oneshot
     Ok(tasks)
 }
 pub async fn acmed_service(
-    config: &Config, acmed_config: &AcmeConfig, sender: async_channel::Sender<bool>,
-    // mut acme_rx: futures::channel::mpsc::Receiver<AcmeStatus>
+    config: &Config,
+    acmed_config: &AcmeConfig,
+    sender: async_channel::Sender<bool> // mut acme_rx: futures::channel::mpsc::Receiver<AcmeStatus>
 ) -> Result<Vec<JoinHandle<Result<()>>>> {
     use async_io::Timer;
     use futures::FutureExt;

@@ -1,9 +1,9 @@
 use crate::{
     acme::renew::challenge_acme,
     api::state::State,
-    http::handler::{handle_create_user, handle_server_query, handle_server_update}
+    http::handler::{handle_create_user, handle_server_query, handle_server_update, handle_servers_query}
 };
-use ntex::web::{self, middleware, App, HttpRequest, HttpResponse, guard};
+use ntex::web::{self, guard, middleware, App, HttpRequest, HttpResponse};
 use ntex_files as fs;
 use sqlx::{Pool, Sqlite};
 use std::sync::Arc;
@@ -38,7 +38,9 @@ async fn p404() -> HttpResponse {
     HttpResponse::NotFound().body(html)
 }
 #[ntex::main]
-pub async fn serve_acme_challenge(state: Arc<State<Pool<Sqlite>>>, service_tx: futures::channel::oneshot::Sender<()>) -> std::io::Result<()> {
+pub async fn serve_acme_challenge(
+    state: Arc<State<Pool<Sqlite>>>, service_tx: futures::channel::oneshot::Sender<()>
+) -> std::io::Result<()> {
     let srv = web::server(move || {
         App::new()
             // enable logger
@@ -48,6 +50,7 @@ pub async fn serve_acme_challenge(state: Arc<State<Pool<Sqlite>>>, service_tx: f
                 web::resource("/.well-known/acme-challenge/{token}").route(web::get().to(challenge)),
                 web::resource("/ostrich/admin/mobile/user/create").route(web::post().to(handle_create_user)),
                 web::resource("/ostrich/api/mobile/server/list").route(web::post().to(handle_server_query)),
+                web::resource("/ostrich/api/mobile/servers/list").route(web::post().to(handle_servers_query)),
                 web::resource("/ostrich/api/server/update").app_state(web::types::JsonConfig::default().limit(4096)).route(web::post().to(handle_server_update)),
                 fs::Files::new("/", "/etc/ostrich/html/").index_file("index.html"),
             )

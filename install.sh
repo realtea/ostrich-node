@@ -104,6 +104,10 @@ green "======================="
 yellow "请输入绑定到本VPS的域名"
 green "======================="
 read your_domain
+green "======================="
+yellow "请输入调度中心的域名"
+green "======================="
+read remote_domain
 real_addr=`ping ${your_domain} -c 1 | sed '1{s/[^(]*(//;s/).*//;q}'`
 local_addr=`curl ipv4.icanhazip.com`
 if [ $real_addr == $local_addr ] ; then
@@ -115,16 +119,17 @@ if [ $real_addr == $local_addr ] ; then
     #设置伪装站
 
     ostrich_passwd=$(cat /dev/urandom | head -1 | md5sum | head -c 8)
-    mkdir -p /etc/ostrich/conf /etc/ostrich/certs/tmp /etc/ostrich/db /etc/ostrich/html
+    mkdir -p /etc/ostrich/conf /etc/ostrich/certs/tmp /etc/ostrich/db /etc/ostrich/html /etc/ostrich/geo
     wget https://github.com/V2RaySSR/Trojan/raw/master/web.zip
     unzip  -d /etc/ostrich/html/ web.zip
+    cp ./assets/GeoLite2/GeoLite2-City.mmdb /etc/ostrich/geo
 cat > /etc/ostrich/conf/ostrich.json <<-EOF
 {
     "run_type": "server",
     "local_addr": "$your_domain",
     "local_ip": "$local_addr",
     "local_port": 443,
-    "remote_addr": "$your_domain",
+    "remote_addr": "$remote_domain",
     "remote_port": 443,
     "password": [
         "$ostrich_passwd"

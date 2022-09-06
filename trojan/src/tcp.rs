@@ -44,21 +44,22 @@ pub struct CopyFuture<S, D> {
 
     active_timeout: Delay,
     configured_timeout: Duration,
-    tag: SocketAddr,
-    sender: futures::channel::mpsc::Sender<SessionMessage>
+    tag: SocketAddr // sender: futures::channel::mpsc::Sender<SessionMessage>
 }
 
 impl<S: AsyncRead, D: AsyncRead> CopyFuture<S, D> {
     pub fn new(
-        src: S, dst: D, timeout: Duration, tag: SocketAddr, sender: futures::channel::mpsc::Sender<SessionMessage>
+        src: S,
+        dst: D,
+        timeout: Duration,
+        tag: SocketAddr // sender: futures::channel::mpsc::Sender<SessionMessage>
     ) -> Self {
         CopyFuture {
             src: BufReader::new(src),
             dst: BufReader::new(dst),
             active_timeout: Delay::new(timeout),
             configured_timeout: timeout,
-            tag,
-            sender
+            tag // sender
         }
     }
 }
@@ -71,7 +72,7 @@ where
     type Output = io::Result<()>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut sender = self.sender.clone();
+        // let mut sender = self.sender.clone();
         let tag = self.tag.clone();
         let this = &mut *self;
 
@@ -103,10 +104,10 @@ where
                 (Status::Done, Status::Done) => return Poll::Ready(Ok(())),
                 // Either source or destination made progress, thus reset timer.
                 (Status::Progressed, _) | (_, Status::Progressed) => {
-                    sender.try_send(SessionMessage::KeepLive(tag)).map_err(|e| {
-                        log::error!("send keepalive message error: {:?}", e);
-                        std::io::Error::new(std::io::ErrorKind::WriteZero, format!("{:?}", e))
-                    })?;
+                    //                    sender.try_send(SessionMessage::KeepLive(tag)).map_err(|e| {
+                    // log::error!("send keepalive message error: {:?}", e);
+                    // std::io::Error::new(std::io::ErrorKind::WriteZero, format!("{:?}", e))
+                    // })?;
                     reset_timer = true
                 }
                 // Both are pending. Check if timer fired, otherwise return Poll::Pending.

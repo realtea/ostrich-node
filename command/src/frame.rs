@@ -17,7 +17,7 @@ impl From<u16> for Frame {
             0x0000 => Frame::CreateUserRequest,
             0x0001 => Frame::CreateUserResponse,
             0x0010 => Frame::DeleteUserRequest,
-            0x0011=> Frame::DeleteUserResponse,
+            0x0011 => Frame::DeleteUserResponse,
             _ => Frame::UnKnown
         };
         frame
@@ -68,7 +68,7 @@ impl Frame {
         let mut packet = BytesMut::new();
         let sum = CRC.checksum(data.as_ref());
         //        packet.reserve(data.as_ref().len() + std::mem::size_of_val(&sum) + 2 + 1);
-        packet.reserve(data.as_ref().len() + std::mem::size_of_val(&sum) + 4 + 2 /*fame type*/);
+        packet.reserve(data.as_ref().len() + std::mem::size_of_val(&sum) + 4 + 2 /* fame type */);
         packet.put_u32(data.len() as u32);
         packet.put_u64(sum);
         packet.put_u16(self.into());
@@ -97,7 +97,7 @@ impl Frame {
         let sum = BigEndian::read_u64(data.as_ref()) as u64;
         data.advance(std::mem::size_of_val(&sum));
         //        let data = data.to_vec();
-        data.advance(2);//frame type
+        data.advance(2); // frame type
 
         let check = CRC.checksum(data.as_ref());
         //        dbg!(sum == check);

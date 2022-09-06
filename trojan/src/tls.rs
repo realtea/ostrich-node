@@ -1,5 +1,5 @@
 use crate::config::Config;
-use rustls::{self, ALL_VERSIONS, server::NoClientAuth};
+use rustls::{self, server::NoClientAuth, ALL_VERSIONS};
 use rustls_pemfile;
 use std::{
     fs,

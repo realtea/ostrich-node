@@ -64,6 +64,7 @@ fn main() -> Result<()> {
                             println!("{}", table);
                         }
                         ResponseEntity::Server(_) => {}
+                        ResponseEntity::ServerV2(_) => {}
                         ResponseEntity::Status => {}
                     }
                 } else {

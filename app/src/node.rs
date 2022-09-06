@@ -62,7 +62,7 @@ fn main() -> Result<()> {
     use_max_file_limit();
     use_max_mem_limit();
 
-    let ( service_tx, service_rx) = futures::channel::oneshot::channel::<()>();
+    let (service_tx, service_rx) = futures::channel::oneshot::channel::<()>();
 
     let builder = LocalExecutorBuilder::new(Placement::Fixed(0));
     let service_handle = builder
@@ -71,7 +71,7 @@ fn main() -> Result<()> {
             async move {
                 use futures::future::join_all;
                 let mut tasks = vec![];
-                tasks.append(&mut service_init(&config,service_tx).await?);
+                tasks.append(&mut service_init(&config, service_tx).await?);
                 tasks.append(&mut acmed_service(&config, &acmed_config, sender).await?);
                 join_all(tasks).await;
                 Ok(()) as Result<()>

@@ -13,13 +13,18 @@ pub struct NodeAddress {
     #[serde(skip_serializing, skip_deserializing)]
     pub country: String,
     #[serde(skip_serializing, skip_deserializing)]
-    pub region: String,
+    pub city: String
 }
 
-// pub enum Status{
-//     Online = 0 ,
-//     Offline
-// }
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct NodeAddressV2 {
+    pub host: String,
+    pub ip: String,
+    pub port: u16,
+    pub passwd: String,
+    pub country: String,
+    pub city: String
+}
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Node {
@@ -31,14 +36,25 @@ pub struct Node {
                           * pub status: Status */
 }
 
-impl PartialEq for Node {
-    fn eq(&self, other: &Node) -> bool {
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct NodeV2 {
+    pub addr: NodeAddressV2,
+    pub count: usize,
+    pub total: usize,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub last_update: i64 /* #[serde(skip_serializing,skip_deserializing)]
+                          * pub status: Status */
+}
+
+
+impl PartialEq for NodeV2 {
+    fn eq(&self, other: &NodeV2) -> bool {
         self.addr.ip == other.addr.ip
     }
 }
 pub struct State<T> {
     pub(crate) db: T,
-    pub server: Mutex<VecDeque<Node>> /* pub sq: RwLock<BTreeMap<String, usize>>,
+    pub server: Mutex<VecDeque<NodeV2>> /* pub sq: RwLock<BTreeMap<String, usize>>,
                                        * pub index: AtomicUsize, */
 }
 
@@ -71,7 +87,7 @@ where T: Db<Conn = PoolConnection<Sqlite>>
         &self.db
     }
 
-    pub fn server(&self) -> &Mutex<VecDeque<Node>> {
+    pub fn server(&self) -> &Mutex<VecDeque<NodeV2>> {
         &self.server
     }
 }

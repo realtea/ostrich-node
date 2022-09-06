@@ -1,6 +1,9 @@
 use crate::api::{
-    state::{Node, State},
-    users::{create_user, get_available_server, update_available_server, AdminUser, QueryRequest, User}
+    state::{Node, NodeAddress, NodeAddressV2, State},
+    users::{
+        create_user, get_available_server, get_available_servers, update_available_server, AdminUser, QueryRequest,
+        User
+    }
 };
 use log::warn;
 use ntex::{web, web::HttpResponse};
@@ -9,21 +12,16 @@ use serde_repr::*;
 use serde_with::skip_serializing_none;
 use sqlx::{Pool, Sqlite};
 use std::sync::Arc;
+use crate::api::state::NodeV2;
 
-#[skip_serializing_none]
-#[derive(Serialize, Deserialize)]
-pub struct ServerAddr {
-    pub(crate) host: String,
-    pub(crate) ip: String,
-    pub(crate) port: u16,
-    pub country: Option<String>,
-    pub city: Option<String>,
-    pub passwd: Option<String>
-}
 
 #[derive(Serialize, Deserialize)]
 pub struct ServerNode {
-    pub(crate) server: Vec<ServerAddr>
+    pub(crate) server: Vec<NodeAddress>
+}
+#[derive(Serialize, Deserialize)]
+pub struct ServerNodeV2 {
+    pub(crate) server: Vec<NodeAddressV2>
 }
 
 #[derive(Serialize_repr, Deserialize_repr, Clone)]
@@ -39,6 +37,7 @@ pub enum Role {
 pub enum ResponseEntity {
     User(User),
     Server(ServerNode),
+    ServerV2(ServerNodeV2),
     Status
 }
 #[derive(Serialize, Deserialize)]
@@ -105,6 +104,15 @@ pub async fn handle_server_query(
 
     Ok(response)
 }
+pub async fn handle_servers_query(
+    body: web::types::Json<QueryRequest>, state: web::types::State<Arc<State<Pool<Sqlite>>>>
+) -> Result<HttpResponse, errors::NtexResponseError> {
+    let ret = get_available_servers(body, state).await;
+
+    let response = build_response(ret)?;
+
+    Ok(response)
+}
 // pub async fn handle_server_lists_query<T>(req: tide::Request<Arc<State<T>>>) -> Result<HttpResponse>
 // where T: Db<Conn = PoolConnection<Sqlite>> {
 // let ret = get_available_servers(req).await;
@@ -114,7 +122,7 @@ pub async fn handle_server_query(
 // Ok(response)
 // }
 pub async fn handle_server_update(
-    body: web::types::Json<Node>, state: web::types::State<Arc<State<Pool<Sqlite>>>>
+    body: web::types::Json<NodeV2>, state: web::types::State<Arc<State<Pool<Sqlite>>>>
 ) -> Result<HttpResponse, errors::NtexResponseError> {
     let ret = update_available_server(body, state).await;
 

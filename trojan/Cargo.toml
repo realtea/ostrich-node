@@ -43,7 +43,7 @@ glommio = {git = "https://github.com/DataDog/glommio.git"}
 
 #tls
 futures-rustls = {path = "../futures-rustls"}
-rustls = "0.20.4"
+rustls = {version = "0.20.4", features = ["tls12"]}
 
 #pem = "1.0.2"
 webpki-roots = "0.22.3"

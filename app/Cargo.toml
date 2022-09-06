@@ -43,6 +43,7 @@ service = {path = "../service"}
 command = {path = "../command"}
 acmed = {path = "../acmed" }
 
+geoip2 = "0.1.6"
 #allocator
 rpmalloc = { version = "0.2.0", features = ["guards", "statistics","unlimited_cache", "unlimited_global_cache", "unlimited_thread_cache"] }
 

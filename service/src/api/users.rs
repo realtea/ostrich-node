@@ -6,14 +6,15 @@ use crate::{
     }
 };
 // use bytes::buf::ext::BufExt;
-use crate::http::handler::{ResponseEntity, ServerAddr, ServerNode};
+use crate::http::handler::{ResponseEntity, ServerNode, ServerNodeV2};
 // use hyper::{body::Buf, Body, Request};
+use crate::api::state::{NodeAddress, NodeAddressV2, NodeV2};
 use log::{error, info};
 use ntex::web;
 use serde::{Deserialize, Serialize};
 use serde_repr::*;
 use sqlx::{pool::PoolConnection, Sqlite};
-use std::{default::Default, ops::Sub, sync::Arc};
+use std::{collections::VecDeque, default::Default, ops::Sub, sync::Arc};
 
 pub const USER_TOKEN_MAX_LEN: usize = 1024;
 pub const NODE_EXPIRE: i64 = 207; // 3`30``
@@ -71,7 +72,7 @@ impl From<UserEntity> for User {
     }
 }
 pub async fn update_available_server<T>(
-    body: web::types::Json<Node>, state: web::types::State<Arc<State<T>>>
+    body: web::types::Json<NodeV2>, state: web::types::State<Arc<State<T>>>
 ) -> Result<ResponseEntity, errors::NtexResponseError>
 where T: Db<Conn = PoolConnection<Sqlite>> {
     let body = body.into_inner();
@@ -79,7 +80,7 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
     let addr = body.addr;
     let now = chrono::Utc::now().timestamp();
     let mut servers = state.server.lock().await;
-    let node = Node { addr: addr.clone(), count: body.count, total: body.total, last_update: now };
+    let node = NodeV2 { addr: addr.clone(), count: body.count, total: body.total, last_update: now };
     info!("now: {:?},node:{:?}", now, node.clone());
     if !servers.contains(&node) {
         servers.push_back(node);
@@ -124,13 +125,13 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
             })?;
 
             let servers = ResponseEntity::Server(ServerNode {
-                server: vec![ServerAddr {
+                server: vec![NodeAddress {
                     host: node.addr.host.clone(),
                     ip: node.addr.ip.clone(),
                     port: node.addr.port,
-                    country: None,
-                    city: None,
-                    passwd: Some(node.addr.passwd.clone())
+                    country: String::new(),
+                    city: String::new(),
+                    passwd: node.addr.passwd.clone()
                 }]
             });
             nodes.push_back(node);
@@ -140,6 +141,51 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
     }
     drop(nodes);
     Err(errors::NtexResponseError::BadRequest("user id is invalidate".to_string()))
+}
+
+pub async fn get_available_servers<T>(
+    body: web::types::Json<QueryRequest>, state: web::types::State<Arc<State<T>>>
+) -> Result<ResponseEntity, errors::NtexResponseError>
+where T: Db<Conn = PoolConnection<Sqlite>> {
+    let body = body.into_inner();
+    info!("body {:?}", body);
+    let mut db = state.db.conn().await?;
+    let mut nodes = state.server.lock().await;
+    let now = chrono::Utc::now().timestamp();
+    let len = nodes.len();
+
+    if len == 0 {
+        return Err(errors::NtexResponseError::InternalServerError)
+    }
+    let mut servers = vec![];
+    let mut node_list = VecDeque::<NodeV2>::new();
+    for _i in 0..len {
+        let node = nodes.pop_front();
+        if node.is_none() {
+            continue
+        }
+        let node = node.unwrap();
+        if now.sub(node.last_update) < NODE_EXPIRE {
+            db.get_user_by_token(body.user_id.as_ref()).await.map_err(|e| {
+                info!("sql error: {:?}", e);
+                errors::NtexResponseError::BadRequest("user id is invalidate".to_string())
+            })?;
+            let server = NodeAddressV2 {
+                host: node.addr.host.clone(),
+                ip: node.addr.ip.clone(),
+                port: node.addr.port,
+                country: node.addr.country.clone(),
+                city: node.addr.city.clone(),
+                passwd: node.addr.passwd.clone()
+            };
+            servers.push(server);
+            node_list.push_back(node);
+        }
+    }
+    nodes.append(&mut node_list);
+    info!("response: {:?}",servers);
+    let ret = ResponseEntity::ServerV2(ServerNodeV2 { server: servers });
+    Ok(ret)
 }
 
 pub async fn create_user<T>(

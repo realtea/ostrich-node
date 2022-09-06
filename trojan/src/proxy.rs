@@ -65,100 +65,100 @@ impl ProxyBuilder {
         // use async_std::net::TcpListener;
         //
         // let listener = TcpListener::from(socket.into_tcp_listener());
-        let (mut connection_activity_tx, mut connection_activity_rx): (
-            futures::channel::mpsc::Sender<SessionMessage>,
-            futures::channel::mpsc::Receiver<SessionMessage>
-        ) = futures::channel::mpsc::channel(u32::MAX as usize);
-        let session_task = spawn_local(async move {
-            // let mut inter = interval(time_to_live.add(Duration::from_secs(45)));
-            // inter.set_missed_tick_behavior(MissedTickBehavior::Burst);
-
-            use async_io::Timer;
-            let mut timer = Timer::interval(time_to_live.add(Duration::from_secs(45)));
-
-            let mut endpoint: LruCache<SocketAddr, Connection> =
-                LruCache::with_expiry_duration_and_capacity(time_to_live, u16::MAX as usize);
-
-            use crate::SessionMessage::{DisConnected, KeepLive, NewPeer};
-
-            loop {
-                select! {
-                    _ = timer.next().fuse() => {
-                        let mut expired = endpoint
-                            .notify_iter()
-                            .filter_map(|entry| {
-                                match entry {
-                                    TimedEntry::Expired(key, value) => Some((key, value)),
-                                    _ => None
-                                }
-                            })
-                            .collect::<Vec<_>>();
-                        let remains = endpoint.len();
-                        info!("expired connections  num: {}",expired.len());
-                        while let Some((_k,   w)) = expired.pop() {
-                            // if w.is_some() {
-                            info!("starting to terminate task from client connection: {:?}",&w.addr);
-                            std::mem::drop(w.terminator);
-                            // w.stream.close().await?;
-                            // let _ = w.task.await.map_err(|e|{
-                            //     error!("wait task exit error: {:?}",e);
-                            //     Error::Eor(anyhow::anyhow!("{:?}",e))
-                            // })?;
-                            // w.task.abort();
-                            info!("task terminated from client connection: {:?}",&w.addr)
-                            // }
-                        }
-                        info!("connections remained num: {}",remains);
-                    },
-                    session =  connection_activity_rx.next().fuse() =>{
-                        match  session{
-                            Some(session) =>{
-                                match session {
-                                    NewPeer(connection) => {
-                                        if endpoint.contains_key(&connection.addr){
-                                            endpoint.get(&connection.addr);
-                                        }else {
-                                            endpoint.insert(connection.addr, connection);
-                                        }
-                                    },
-                                    KeepLive(addr)=>{
-                                          match endpoint.get(&addr){
-                                            Some(_connection) =>{
-                                                // error!("keepalive session message from {} -- {}",&addr,&connection.addr)
-                                            },
-                                            None =>{
-                                                error!("keepalive session message invalid {}",&addr)
-                                            }
-                                        }
-                                    },
-                                    DisConnected(addr)=>{
-                                          match endpoint.remove(&addr){
-                                            Some( connection) =>{
-                                                // error!("disconnected session message from {} -- {}",&addr,&connection.addr);
-                                                std::mem::drop(connection.terminator);
-                                                // connection.stream.close().await?;
-                                                // let _= connection.task.await.map_err(|e|{
-                                                //     error!("wait task exit error: {:?}",e);
-                                                //     Error::Eor(anyhow::anyhow!("{:?}",e))
-                                                // })?;
-                                                info!("disconnected from client connection: {:?}",&connection.addr)
-                                                // connection.task.abort();
-                                            },
-                                            None =>{
-                                                error!("disconnected session message invalid {}",&addr)
-                                            }
-                                        }
-                                    }
-                                }
-                            },
-                            None =>{}
-                        }
-                    }
-                }
-            }
-            Ok(()) as Result<()>
-        })
-        .detach();
+        //        let (mut connection_activity_tx, mut connection_activity_rx): (
+        // futures::channel::mpsc::Sender<SessionMessage>,
+        // futures::channel::mpsc::Receiver<SessionMessage>
+        // ) = futures::channel::mpsc::channel(u32::MAX as usize);
+        // let session_task = spawn_local(async move {
+        // let mut inter = interval(time_to_live.add(Duration::from_secs(45)));
+        // inter.set_missed_tick_behavior(MissedTickBehavior::Burst);
+        //
+        // use async_io::Timer;
+        // let mut timer = Timer::interval(time_to_live.add(Duration::from_secs(45)));
+        //
+        // let mut endpoint: LruCache<SocketAddr, Connection> =
+        // LruCache::with_expiry_duration_and_capacity(time_to_live, u16::MAX as usize);
+        //
+        // use crate::SessionMessage::{DisConnected, KeepLive, NewPeer};
+        //
+        // loop {
+        // select! {
+        // _ = timer.next().fuse() => {
+        // let mut expired = endpoint
+        // .notify_iter()
+        // .filter_map(|entry| {
+        // match entry {
+        // TimedEntry::Expired(key, value) => Some((key, value)),
+        // _ => None
+        // }
+        // })
+        // .collect::<Vec<_>>();
+        // let remains = endpoint.len();
+        // info!("expired connections  num: {}",expired.len());
+        // while let Some((_k,   w)) = expired.pop() {
+        // if w.is_some() {
+        // info!("starting to terminate task from client connection: {:?}",&w.addr);
+        // std::mem::drop(w.terminator);
+        // w.stream.close().await?;
+        // let _ = w.task.await.map_err(|e|{
+        //     error!("wait task exit error: {:?}",e);
+        //     Error::Eor(anyhow::anyhow!("{:?}",e))
+        // })?;
+        // w.task.abort();
+        // info!("task terminated from client connection: {:?}",&w.addr)
+        // }
+        // }
+        // info!("connections remained num: {}",remains);
+        // },
+        // session =  connection_activity_rx.next().fuse() =>{
+        // match  session{
+        // Some(session) =>{
+        // match session {
+        // NewPeer(connection) => {
+        // if endpoint.contains_key(&connection.addr){
+        // endpoint.get(&connection.addr);
+        // }else {
+        // endpoint.insert(connection.addr, connection);
+        // }
+        // },
+        // KeepLive(addr)=>{
+        // match endpoint.get(&addr){
+        // Some(_connection) =>{
+        // error!("keepalive session message from {} -- {}",&addr,&connection.addr)
+        // },
+        // None =>{
+        // error!("keepalive session message invalid {}",&addr)
+        // }
+        // }
+        // },
+        // DisConnected(addr)=>{
+        // match endpoint.remove(&addr){
+        // Some( connection) =>{
+        // error!("disconnected session message from {} -- {}",&addr,&connection.addr);
+        // std::mem::drop(connection.terminator);
+        // connection.stream.close().await?;
+        // let _= connection.task.await.map_err(|e|{
+        //     error!("wait task exit error: {:?}",e);
+        //     Error::Eor(anyhow::anyhow!("{:?}",e))
+        // })?;
+        // info!("disconnected from client connection: {:?}",&connection.addr)
+        // connection.task.abort();
+        // },
+        // None =>{
+        // error!("disconnected session message invalid {}",&addr)
+        // }
+        // }
+        // }
+        // }
+        // },
+        // None =>{}
+        // }
+        // }
+        // }
+        // }
+        // Ok(()) as Result<()>
+        // })
+        // .detach();
         let listener = TcpListener::bind(&self.addr).map_err(|e| {
             error!("{}", e);
             Error::Eor(anyhow::anyhow!("#1 {:?}", e))
@@ -179,90 +179,91 @@ impl ProxyBuilder {
         loop {
             // let mut receiver = receiver.clone();
             select! {
-                incoming_stream = incoming.next().fuse() =>  {
-                    // Some(incoming_stream) =>{
-                    match incoming_stream.ok_or(Error::Eor(anyhow::anyhow!("got an empty incoming stream")))?{
-                        Ok(incoming_stream)=>{
-                                match incoming_stream.peer_addr(){
-                                Ok(source) => {
-                                    let (terminator_tx, terminator_rx) = oneshot::channel();
-                                    let authenticator = self.authenticator.clone();
-                                    let fallback = self.fallback.clone();
-                                    let resolver = resolver.clone();
-                                    let mut connection_activity_loop_tx = connection_activity_tx.clone();
-                                    // let tcp_stream = incoming_stream.clone();
-                                    let tls_acceptor = tls_acceptor.clone();
-                                    // let task =
-                                        spawn_local(
-                                            async move {
-                                                let process = process_stream(
-                                                    tls_acceptor,
-                                                    incoming_stream,
-                                                    source,
-                                                    authenticator,
-                                                    fallback,
-                                                    resolver,
-                                                    connection_activity_loop_tx.clone()
-                                                );
-                                                let terminator = async {
-                                                    terminator_rx.await.map_err(|e|{
-                                                        error!("terminator received: {:?}",e);
-                                                        Error::Eor(anyhow::anyhow!("#4 {:?}",e))
-                                                    })?;
-                                                    Ok(()) as Result<()>
-                                                };
+                            incoming_stream = incoming.next().fuse() =>  {
+                                // Some(incoming_stream) =>{
+                                match incoming_stream.ok_or(Error::Eor(anyhow::anyhow!("got an empty incoming stream")))?{
+                                    Ok(incoming_stream)=>{
+                                            match incoming_stream.peer_addr(){
+                                            Ok(source) => {
+                                                // let (terminator_tx, terminator_rx) = oneshot::channel();
+                                                let authenticator = self.authenticator.clone();
+                                                let fallback = self.fallback.clone();
+                                                let resolver = resolver.clone();
+                                                // let mut connection_activity_loop_tx = connection_activity_tx.clone();
+                                                // let tcp_stream = incoming_stream.clone();
+                                                let tls_acceptor = tls_acceptor.clone();
+                                                // let task =
+                                                    spawn_local(
+                                                        async move {
+                                                            let process = process_stream(
+                                                                tls_acceptor,
+                                                                incoming_stream,
+                                                                source,
+                                                                authenticator,
+                                                                fallback,
+                                                                resolver,
+                                                                // connection_activity_loop_tx.clone()
+                                                            );
+            /*                                                let terminator = async {
+                                                                terminator_rx.await.map_err(|e|{
+                                                                    error!("terminator received: {:?}",e);
+                                                                    Error::Eor(anyhow::anyhow!("#4 {:?}",e))
+                                                                })?;
+                                                                Ok(()) as Result<()>
+                                                            };
 
-                                                futures::pin_mut!(terminator);
-                                                futures::pin_mut!(process);
+                                                            futures::pin_mut!(terminator);
+                                                            futures::pin_mut!(process);*/
 
-                                                match futures::future::select(process, terminator).await{
-                                                    Either::Left(_) => {
-                                                        connection_activity_loop_tx.send(SessionMessage::DisConnected(source)).await.map_err(|e| {
-                                                            log::error!("send disconnected message error: {:?}", e);
-                                                            Error::Eor(anyhow::anyhow!("#5 {:?}", e))
-                                                        })?;
-                                                        info!("task exit from client connection processor: {:}",&source)
-                                                    },
-                                                    Either::Right(_) => {info!("task exit from client connection terminator: {:}",&source)},
-                                                }
-                                                Ok(()) as Result<()>
+            /*                                                match futures::future::select(process, terminator).await{
+                                                                Either::Left(_) => {
+                                                                    connection_activity_loop_tx.send(SessionMessage::DisConnected(source)).await.map_err(|e| {
+                                                                        log::error!("send disconnected message error: {:?}", e);
+                                                                        Error::Eor(anyhow::anyhow!("#5 {:?}", e))
+                                                                    })?;
+                                                                    info!("task exit from client connection processor: {:}",&source)
+                                                                },
+                                                                Either::Right(_) => {info!("task exit from client connection terminator: {:}",&source)},
+                                                            }*/
+                                                            process.await?;
+                                                            Ok(()) as Result<()>
+                                                        }
+                                                    ).detach();
+
+            /*                                    let conneccion = SessionMessage::NewPeer(Connection{
+                                                    addr: source,
+                                                    // task,
+                                                    // stream: tcp_stream,
+                                                    terminator: terminator_tx,
+                                                });
+                                                match connection_activity_tx.send(conneccion).await{
+                                                    Ok(_) =>{},
+                                                    Err(e) =>{
+                                                        error!("##2 {}",e);
+                                                        continue
+                                                    }
+                                                }*/
+                                            },
+                                            Err(e) =>{
+                                                error!("##1 {}",e);
+                                                continue
                                             }
-                                        ).detach();
-
-                                    let conneccion = SessionMessage::NewPeer(Connection{
-                                        addr: source,
-                                        // task,
-                                        // stream: tcp_stream,
-                                        terminator: terminator_tx,
-                                    });
-                                    match connection_activity_tx.send(conneccion).await{
-                                        Ok(_) =>{},
-                                        Err(e) =>{
-                                            error!("##2 {}",e);
-                                            continue
                                         }
+                                    },
+                                    Err(e)=>{
+                                       error!("##0 {}",e);
+                                        continue
                                     }
-                                },
-                                Err(e) =>{
-                                    error!("##1 {}",e);
-                                    continue
                                 }
+                            },
+                            _ = receiver.next().fuse() =>{
+                                tls_config = make_config(config);
+                                tls_acceptor = TlsAcceptor::from(Arc::new(tls_config));
+                                info!("tls config has been reloaded");
                             }
-                        },
-                        Err(e)=>{
-                           error!("##0 {}",e);
-                            continue
                         }
-                    }
-                },
-                _ = receiver.next().fuse() =>{
-                    tls_config = make_config(config);
-                    tls_acceptor = TlsAcceptor::from(Arc::new(tls_config));
-                    info!("tls config has been reloaded");
-                }
-            }
         }
-        session_task.await.unwrap();
+        // session_task.await.unwrap();
         Ok(())
     }
 }
@@ -273,8 +274,12 @@ impl ProxyBuilder {
 // const DEFAULT_BUFFER_SIZE: usize = 2 * 4096;
 
 async fn process_stream(
-    acceptor: TlsAcceptor, raw_stream: TcpStream, source: SocketAddr, authenticator: Vec<String>, fallback: String,
-    resolver: Arc<AsyncStdResolver>, connection_activity_tx: futures::channel::mpsc::Sender<SessionMessage>
+    acceptor: TlsAcceptor,
+    raw_stream: TcpStream,
+    source: SocketAddr,
+    authenticator: Vec<String>,
+    fallback: String,
+    resolver: Arc<AsyncStdResolver> // connection_activity_tx: futures::channel::mpsc::Sender<SessionMessage>
 ) -> Result<()> {
     // let source = raw_stream.peer_addr().map(|addr| addr.to_string()).unwrap_or_else(|_| "".to_owned());
     //
@@ -301,7 +306,7 @@ async fn process_stream(
             ));
 
             debug!("handshake success from: {}", source);
-            match proxy(inner_stream, source, authenticator, fallback, resolver, connection_activity_tx).await {
+            match proxy(inner_stream, source, authenticator, fallback, resolver /* connection_activity_tx */).await {
                 Ok(_) => Ok(()),
                 Err(err) => {
                     match err {
@@ -407,9 +412,11 @@ const CMD_TCP_CONNECT: u8 = 0x01;
 const CMD_UDP_ASSOCIATE: u8 = 0x03;
 
 async fn redirect_fallback<#[cfg(feature = "wss")] S: AsyncRead + AsyncWrite + Unpin + Send>(
-    source: &SocketAddr, target: &str, #[cfg(not(feature = "wss"))] tls_stream: TlsStream<TcpStream>,
-    #[cfg(feature = "wss")] mut tls_stream: WsStream<S>, buf: &[u8],
-    connection_activity_tx: futures::channel::mpsc::Sender<SessionMessage>
+    source: &SocketAddr,
+    target: &str,
+    #[cfg(not(feature = "wss"))] tls_stream: TlsStream<TcpStream>,
+    #[cfg(feature = "wss")] mut tls_stream: WsStream<S>,
+    buf: &[u8] // connection_activity_tx: futures::channel::mpsc::Sender<SessionMessage>
 ) -> Result<()> {
     let mut tcp_stream = TcpStream::connect(target).await.map_err(|e| {
         error!("{}", e);
@@ -426,8 +433,7 @@ async fn redirect_fallback<#[cfg(feature = "wss")] S: AsyncRead + AsyncWrite + U
         tls_stream,
         tcp_stream,
         Duration::from_secs(60 * 5),
-        source.to_owned(),
-        connection_activity_tx
+        source.to_owned() // connection_activity_tx
     );
     copy_future.await.map_err(|e| e)?;
     Ok(())
@@ -437,9 +443,11 @@ async fn redirect_fallback<#[cfg(feature = "wss")] S: AsyncRead + AsyncWrite + U
 // )
 async fn proxy(
     #[cfg(not(feature = "wss"))] mut tls_stream: TlsStream<TcpStream>,
-    #[cfg(feature = "wss")] mut tls_stream: WsStream<S>, source: SocketAddr, authenticator: Vec<String>,
-    fallback: String, resolver: Arc<AsyncStdResolver>,
-    mut connection_activity_tx: futures::channel::mpsc::Sender<SessionMessage>
+    #[cfg(feature = "wss")] mut tls_stream: WsStream<S>,
+    source: SocketAddr,
+    authenticator: Vec<String>,
+    fallback: String,
+    resolver: Arc<AsyncStdResolver> // mut connection_activity_tx: futures::channel::mpsc::Sender<SessionMessage>
 ) -> Result<()> {
     let mut passwd_buf: StackVec<u8, HASH_STR_LEN> = StackVec::new();
     passwd_buf.resize(HASH_STR_LEN, 0).map_err(|_| Error::Eor(anyhow::anyhow!("cant resize vec on stack")))?;
@@ -447,14 +455,14 @@ async fn proxy(
     let len = tls_stream.read(&mut passwd_buf).await?;
     if len != HASH_STR_LEN {
         error!("first packet too short");
-        redirect_fallback(&source, &fallback, tls_stream, &passwd_buf, connection_activity_tx).await?;
+        redirect_fallback(&source, &fallback, tls_stream, &passwd_buf /* connection_activity_tx */).await?;
 
         return Err(Error::Eor(anyhow::anyhow!("first packet too short")))
     }
     debug!("received client passwd: {:?}", String::from_utf8_lossy(&passwd_buf).to_string());
     if !authenticator.contains(&String::from_utf8_lossy(&passwd_buf).to_string()) {
         error!("authentication failed, dropping connection");
-        redirect_fallback(&source, &fallback, tls_stream, &passwd_buf, connection_activity_tx).await?;
+        redirect_fallback(&source, &fallback, tls_stream, &passwd_buf /* connection_activity_tx */).await?;
         return Err(Error::Eor(anyhow::anyhow!("authenticate failed")))
     } else {
         error!("authentication succeeded");
@@ -502,8 +510,7 @@ async fn proxy(
                 tls_stream,
                 tcp_stream,
                 Duration::from_secs(60 * 5),
-                source,
-                connection_activity_tx
+                source // connection_activity_tx
             );
             copy_future.await.map_err(|e| e)?;
         }
@@ -520,7 +527,7 @@ async fn proxy(
                 })?;
             // let tls_inner = tls_stream;
 
-            let mut connection_activity_loop_tx = connection_activity_tx.clone();
+            // let mut connection_activity_loop_tx = connection_activity_tx.clone();
             let client_to_server = async {
                 // let mut buf = [0u8; RELAY_BUFFER_SIZE];
                 let mut buf: StackVec<u8, RELAY_BUFFER_SIZE> = StackVec::new();
@@ -537,10 +544,10 @@ async fn proxy(
 
                     tls_stream_reader.read_exact(&mut buf[..header.payload_len as usize]).await?;
 
-                    connection_activity_loop_tx.try_send(SessionMessage::KeepLive(source)).map_err(|e| {
-                        log::error!("send keepalive message error: {:?}", e);
-                        std::io::Error::new(std::io::ErrorKind::WriteZero, format!("{:?}", e))
-                    })?;
+                    // connection_activity_loop_tx.try_send(SessionMessage::KeepLive(source)).map_err(|e| {
+                    // log::error!("send keepalive message error: {:?}", e);
+                    // std::io::Error::new(std::io::ErrorKind::WriteZero, format!("{:?}", e))
+                    // })?;
 
                     //                    let header = match timeout(std::time::Duration::from_secs(60), async {
                     // let header = UdpAssociateHeader::read_from(&mut tls_stream_reader).await?;
@@ -597,10 +604,10 @@ async fn proxy(
                     tls_stream_writer.write_all(&buf[..len]).await?;
                     debug!("udp copy to client: {} bytes", len);
 
-                    connection_activity_tx.try_send(SessionMessage::KeepLive(source)).map_err(|e| {
+/*                    connection_activity_tx.try_send(SessionMessage::KeepLive(source)).map_err(|e| {
                         log::error!("send keepalive message error: {:?}", e);
                         std::io::Error::new(std::io::ErrorKind::WriteZero, format!("{:?}", e))
-                    })?;
+                    })?;*/
 
 /*                    match timeout(std::time::Duration::from_secs(60), async {
                         let (len, dst) = outbound.recv_from(&mut buf).await?;
