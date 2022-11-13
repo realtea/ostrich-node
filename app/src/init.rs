@@ -58,7 +58,7 @@ pub async fn service_init(
     let loacl_public_ip = IpAddr::from_str(&public_ip).unwrap();
     let local_geo = reader.lookup(loacl_public_ip).unwrap();
 
-    let local_country = local_geo
+/*    let local_country = local_geo
         .country
         .as_ref()
         .ok_or(Error::Eor(anyhow::anyhow!("cant lookup country")))?
@@ -77,7 +77,21 @@ pub async fn service_init(
         .ok_or(Error::Eor(anyhow::anyhow!("cant lookup city names")))?
         .get("zh-CN")
         .ok_or(Error::Eor(anyhow::anyhow!("cant lookup city cn name")))?
-        .to_owned();
+        .to_owned();*/
+    let local_city =  match local_geo.city.as_ref().unwrap().names.as_ref().unwrap().get("zh-CN"){
+        Some(city)=> city.to_owned(),
+        None =>{
+            local_geo.city.as_ref().unwrap().names.as_ref().unwrap().get("en").unwrap().to_owned()
+        }
+    };
+
+    let local_country =  match local_geo.country.as_ref().unwrap().names.as_ref().unwrap().get("zh-CN"){
+        Some(country)=> country.to_owned(),
+        None =>{
+            local_geo.country.as_ref().unwrap().names.as_ref().unwrap().get("en").unwrap().to_owned()
+        }
+    };
+
 
     info!("local country: {:#?}", &local_country);
     info!("local city: {:#?}", &local_city);

@@ -104,6 +104,10 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
     let body = body.into_inner();
     info!("body {:?}", body);
     let mut db = state.db.conn().await?;
+    db.get_user_by_token(body.user_id.as_ref()).await.map_err(|e| {
+        info!("sql error: {:?}", e);
+        errors::NtexResponseError::BadRequest("user id is invalidate".to_string())
+    })?;
     let mut nodes = state.server.lock().await;
     let now = chrono::Utc::now().timestamp();
     let len = nodes.len();
@@ -119,11 +123,6 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
         }
         let node = node.unwrap();
         if now.sub(node.last_update) < NODE_EXPIRE {
-            db.get_user_by_token(body.user_id.as_ref()).await.map_err(|e| {
-                info!("sql error: {:?}", e);
-                errors::NtexResponseError::BadRequest("user id is invalidate".to_string())
-            })?;
-
             let servers = ResponseEntity::Server(ServerNode {
                 server: vec![NodeAddress {
                     host: node.addr.host.clone(),
@@ -150,6 +149,10 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
     let body = body.into_inner();
     info!("body {:?}", body);
     let mut db = state.db.conn().await?;
+    db.get_user_by_token(body.user_id.as_ref()).await.map_err(|e| {
+        info!("sql error: {:?}", e);
+        errors::NtexResponseError::BadRequest("user id is invalidate".to_string())
+    })?;
     let mut nodes = state.server.lock().await;
     let now = chrono::Utc::now().timestamp();
     let len = nodes.len();
@@ -166,10 +169,7 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
         }
         let node = node.unwrap();
         if now.sub(node.last_update) < NODE_EXPIRE {
-            db.get_user_by_token(body.user_id.as_ref()).await.map_err(|e| {
-                info!("sql error: {:?}", e);
-                errors::NtexResponseError::BadRequest("user id is invalidate".to_string())
-            })?;
+
             let server = NodeAddressV2 {
                 host: node.addr.host.clone(),
                 ip: node.addr.ip.clone(),
@@ -183,6 +183,18 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
         }
     }
     nodes.append(&mut node_list);
+    /*
+
+    servers.push(NodeAddressV2{
+        host: "kamel.services".to_string(),
+        ip: "45.32.77.193".to_string(),
+        port: 443,
+        passwd: "827d4818".to_string(),
+        country: "美国".to_string(),
+        city: "洛杉矶".to_string()
+    });
+
+    */
     info!("response: {:?}",servers);
     let ret = ResponseEntity::ServerV2(ServerNodeV2 { server: servers });
     Ok(ret)
