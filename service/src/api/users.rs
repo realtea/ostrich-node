@@ -59,6 +59,11 @@ struct NewUser {
     id: String,
     role: i32
 }
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteUser {
+    id: String,
+}
 impl From<User> for QueryResponse {
     fn from(user: User) -> Self {
         QueryResponse { user }
@@ -225,3 +230,30 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
     let new = ResponseEntity::User(User { token, role });
     Ok(new)
 }
+
+pub async fn delete_user<T>(
+    body: web::types::Json<DeleteUser>, state: web::types::State<Arc<State<T>>>
+) -> Result<ResponseEntity, errors::NtexResponseError>
+    where T: Db<Conn = PoolConnection<Sqlite>> {
+    let mut db = state.db.conn().await?;
+    // Decode as JSON...
+    let delete = body.into_inner();
+    let token = delete.id;
+/*    let creator = db.get_user_by_token(admin.admin.as_ref()).await.map_err(|e| {
+        error!("get admin error: {:?}", e);
+        errors::NtexResponseError::BadRequest("user id is invalidate".to_string())
+    })?;
+    let role = admin.user.role.clone() as i32;
+    let token = admin.user.id;
+    if creator.role <= role {
+        return Err(errors::NtexResponseError::BadRequest("no permission".to_string()))
+    }
+    if token.len() > USER_TOKEN_MAX_LEN {
+        return Err(errors::NtexResponseError::BadRequest("user id is invalidate".to_string()))
+    }*/
+    db.delete_user(token.clone())
+        .await
+        .map_err(|_| errors::NtexResponseError::BadRequest("user is not exist".to_string()))?;
+    return Ok(ResponseEntity::Status)
+}
+

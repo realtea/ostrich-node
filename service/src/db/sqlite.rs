@@ -51,14 +51,8 @@ VALUES ( $1, $2,$3 );
         // .last_insert_rowid();
         Ok(())
     }
-
     async fn delete_user(&mut self, token: String) -> Result<()> {
-        sqlx::query(
-            r#"
-DELETE FROM users (user_id )
-VALUES ( $1);
-            "#
-        )
+        sqlx::query("DELETE FROM users WHERE token=$1")
         .bind(token)
         .execute(self)
         .await?;

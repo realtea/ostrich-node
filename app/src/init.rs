@@ -58,13 +58,26 @@ pub async fn service_init(
     let loacl_public_ip = IpAddr::from_str(&public_ip).unwrap();
     let local_geo = reader.lookup(loacl_public_ip).unwrap();
 
-/*    let local_city =  match local_geo.city.as_ref().unwrap().names.as_ref().unwrap().get("zh-CN"){
-        Some(city)=> city.to_owned(),
-        None =>{
-            local_geo.city.as_ref().unwrap().names.as_ref().unwrap().get("en").unwrap().to_owned()
-        }
-    };*/
-
+    /*    let local_country = local_geo
+            .country
+            .as_ref()
+            .ok_or(Error::Eor(anyhow::anyhow!("cant lookup country")))?
+            .names
+            .as_ref()
+            .ok_or(Error::Eor(anyhow::anyhow!("cant lookup country names")))?
+            .get("zh-CN")
+            .ok_or(Error::Eor(anyhow::anyhow!("cant lookup country cn name")))?
+            .to_owned();
+        let local_city = local_geo
+            .city
+            .as_ref()
+            .ok_or(Error::Eor(anyhow::anyhow!("cant lookup city")))?
+            .names
+            .as_ref()
+            .ok_or(Error::Eor(anyhow::anyhow!("cant lookup city names")))?
+            .get("zh-CN")
+            .ok_or(Error::Eor(anyhow::anyhow!("cant lookup city cn name")))?
+            .to_owned();*/
     let local_city = match  local_geo.city{
         Some(city)=> {
             match city.names.as_ref().unwrap().get("zh-CN"){
@@ -75,8 +88,8 @@ pub async fn service_init(
             }
         },
         None =>{
-
-            local_geo.location.as_ref().unwrap().time_zone.as_ref().unwrap().to_owned()
+            public_ip.to_owned()
+            // local_geo.location.as_ref().unwrap().time_zone.as_ref().unwrap().to_string()
         }
     };
 
@@ -131,8 +144,8 @@ pub async fn service_init(
                 )
               "#
     )
-    .execute(&mut migrate)
-    .await?;
+        .execute(&mut migrate)
+        .await?;
     let register_db = db.clone();
     let state = Arc::new(State::new(register_db));
     let cleanup_state = state.clone();
@@ -211,7 +224,7 @@ pub async fn service_init(
             }
             Ok(()) as Result<()>
         })
-        .detach()
+            .detach()
     );
 
     tasks.push(
@@ -237,7 +250,7 @@ pub async fn service_init(
             }
             Ok(()) as Result<()>
         })
-        .detach()
+            .detach()
     );
 
 
@@ -267,7 +280,7 @@ pub async fn service_init(
             }
             Ok(()) as Result<()>
         })
-        .detach()
+            .detach()
     );
     Ok(tasks)
 }
@@ -323,7 +336,7 @@ pub async fn acmed_service(
                                 Error::AcmeLimited => {
                                     warn!("hitting rate limit of LetsEncrypt");
                                     reload = true // test
-                                                  // reload = false//production
+                                    // reload = false//production
                                 }
                                 _ => {
                                     error!("renewing tls certs error: {:?}", e);
@@ -347,7 +360,7 @@ pub async fn acmed_service(
 
             Ok(()) as Result<()>
         })
-        .detach()
+            .detach()
     );
     Ok(tasks)
 }

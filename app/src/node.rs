@@ -28,12 +28,12 @@ fn main() -> Result<()> {
     let matches = Command::new("ostrich")
         .version("0.1.0")
         .arg(Arg::new("config")
-                .short('c')
-                .long("config")
-                .value_name("CONFIG")
-                // .about("Specify the config file")
-                .takes_value(true)
-                .required(true))
+            .short('c')
+            .long("config")
+            .value_name("CONFIG")
+            // .about("Specify the config file")
+            .takes_value(true)
+            .required(true))
         .get_matches();
 
     let config_path = matches.value_of("config").unwrap();
@@ -72,7 +72,7 @@ fn main() -> Result<()> {
                 use futures::future::join_all;
                 let mut tasks = vec![];
                 tasks.append(&mut service_init(&config, service_tx).await?);
-                // tasks.append(&mut acmed_service(&config, &acmed_config, sender).await?);
+                tasks.append(&mut acmed_service(&config, &acmed_config, sender).await?);
                 join_all(tasks).await;
                 Ok(()) as Result<()>
             }
@@ -80,7 +80,7 @@ fn main() -> Result<()> {
         .unwrap();
 
     let builder = LocalExecutorBuilder::new(Placement::Fixed(0));
-/*    let acme_handle = builder
+    let acme_handle = builder
         .name("acme_service")
         .spawn(move || {
             async move {
@@ -128,7 +128,7 @@ fn main() -> Result<()> {
             }
         })
         .unwrap();
-    let _ = acme_handle.join().unwrap();*/
+    let _ = acme_handle.join().unwrap();
     info!(" === init service completed === ");
 
     let proxy = ProxyBuilder::new(proxy_addr, authenticator, DEFAULT_FALLBACK_ADDR.to_string())?;

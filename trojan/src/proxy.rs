@@ -4,7 +4,7 @@ use async_std_resolver::{config, resolver, AsyncStdResolver};
 use bytes::BufMut;
 use errors::{Error, Result};
 use futures::{channel::oneshot, select};
-use futures_rustls::{server::TlsStream, TlsAcceptor};
+use futures_tls::{server::TlsStream, TlsAcceptor};
 use futures_util::{
     future::Either, io::AsyncReadExt, stream::StreamExt, AsyncRead, AsyncWrite, AsyncWriteExt, FutureExt, SinkExt
 };

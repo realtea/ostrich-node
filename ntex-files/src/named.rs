@@ -263,7 +263,7 @@ impl NamedFile {
         let etag = if self.flags.contains(Flags::ETAG) { self.etag() } else { None };
         let last_modified = if self.flags.contains(Flags::LAST_MD) { self.last_modified() } else { None };
 
-        // check preconditions
+/*        // check preconditions
         let precondition_failed = if !any_match(etag.as_ref(), req) {
             true
         } else if let (Some(ref m), Some(header::IfUnmodifiedSince(ref since))) = {
@@ -310,7 +310,10 @@ impl NamedFile {
             }
         } else {
             false
-        };
+        };*/
+
+        let precondition_failed = false;
+        let not_modified = true ;
 
         let mut resp = HttpResponse::build(self.status_code);
         resp.header(http::header::CONTENT_TYPE, self.content_type.to_string()).if_true(
@@ -391,7 +394,7 @@ impl DerefMut for NamedFile {
     }
 }
 
-/// Returns true if `req` has no `If-Match` header or one which matches `etag`.
+/*/// Returns true if `req` has no `If-Match` header or one which matches `etag`.
 fn any_match(etag: Option<&header::EntityTag>, req: &HttpRequest) -> bool {
     if let Some(val) = req.headers().get(http::header::IF_MATCH) {
         if let Ok(val) = header::IfMatch::parse_header(&val) {
@@ -433,7 +436,7 @@ fn none_match(etag: Option<&header::EntityTag>, req: &HttpRequest) -> bool {
         }
     }
     true
-}
+}*/
 
 impl<Err: ErrorRenderer> Responder<Err> for NamedFile {
     type Error = Err::Container;
