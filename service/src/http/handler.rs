@@ -1,7 +1,7 @@
 use crate::api::{
     state::{Node, NodeAddress, NodeAddressV2, State},
     users::{
-        create_user, get_available_server, get_available_servers, update_available_server, AdminUser, QueryRequest,
+        create_user, get_available_server, get_available_servers, update_available_server, CreateUserRequest, QueryRequest,
         User
     }
 };
@@ -86,7 +86,7 @@ fn build_response(
 }
 
 pub async fn handle_create_user(
-    body: web::types::Json<AdminUser>, state: web::types::State<Arc<State<Pool<Sqlite>>>>
+    body: web::types::Json<CreateUserRequest>, state: web::types::State<Arc<State<Pool<Sqlite>>>>
 ) -> Result<HttpResponse, errors::NtexResponseError> {
     let ret = create_user(body, state).await;
 

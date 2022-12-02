@@ -46,23 +46,23 @@ enum Role {
 }
 #[derive(Deserialize, Debug)]
 pub struct QueryRequest {
-    user_id: String // platform: Platform
+    token: String // platform: Platform
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AdminUser {
-    admin: String,
+pub struct CreateUserRequest {
+    admin: String,//admin's token
     user: NewUser
 }
 #[derive(Deserialize)]
 struct NewUser {
-    id: String,
+    token: String,
     role: i32
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeleteUser {
-    id: String,
+    token: String,
 }
 impl From<User> for QueryResponse {
     fn from(user: User) -> Self {
@@ -79,7 +79,7 @@ impl From<UserEntity> for User {
 pub async fn update_available_server<T>(
     body: web::types::Json<NodeV2>, state: web::types::State<Arc<State<T>>>
 ) -> Result<ResponseEntity, errors::NtexResponseError>
-where T: Db<Conn = PoolConnection<Sqlite>> {
+    where T: Db<Conn = PoolConnection<Sqlite>> + 'static {
     let body = body.into_inner();
     info!("received node: {:?}", body);
     let addr = body.addr;
@@ -105,11 +105,11 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
 pub async fn get_available_server<T>(
     body: web::types::Json<QueryRequest>, state: web::types::State<Arc<State<T>>>
 ) -> Result<ResponseEntity, errors::NtexResponseError>
-where T: Db<Conn = PoolConnection<Sqlite>> {
+    where T: Db<Conn = PoolConnection<Sqlite>> + 'static {
     let body = body.into_inner();
     info!("body {:?}", body);
     let mut db = state.db.conn().await?;
-    db.get_user_by_token(body.user_id.as_ref()).await.map_err(|e| {
+    db.get_user_by_token(body.token.as_ref()).await.map_err(|e| {
         info!("sql error: {:?}", e);
         errors::NtexResponseError::BadRequest("user id is invalidate".to_string())
     })?;
@@ -150,11 +150,11 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
 pub async fn get_available_servers<T>(
     body: web::types::Json<QueryRequest>, state: web::types::State<Arc<State<T>>>
 ) -> Result<ResponseEntity, errors::NtexResponseError>
-where T: Db<Conn = PoolConnection<Sqlite>> {
+    where T: Db<Conn = PoolConnection<Sqlite>> + 'static {
     let body = body.into_inner();
     info!("body {:?}", body);
     let mut db = state.db.conn().await?;
-    db.get_user_by_token(body.user_id.as_ref()).await.map_err(|e| {
+    db.get_user_by_token(body.token.as_ref()).await.map_err(|e| {
         info!("sql error: {:?}", e);
         errors::NtexResponseError::BadRequest("user id is invalidate".to_string())
     })?;
@@ -189,7 +189,6 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
     }
     nodes.append(&mut node_list);
     /*
-
     servers.push(NodeAddressV2{
         host: "kamel.services".to_string(),
         ip: "45.32.77.193".to_string(),
@@ -198,7 +197,6 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
         country: "美国".to_string(),
         city: "洛杉矶".to_string()
     });
-
     */
     info!("response: {:?}",servers);
     let ret = ResponseEntity::ServerV2(ServerNodeV2 { server: servers });
@@ -206,18 +204,18 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
 }
 
 pub async fn create_user<T>(
-    body: web::types::Json<AdminUser>, state: web::types::State<Arc<State<T>>>
+    body: web::types::Json<CreateUserRequest>, state: web::types::State<Arc<State<T>>>
 ) -> Result<ResponseEntity, errors::NtexResponseError>
-where T: Db<Conn = PoolConnection<Sqlite>> {
+    where T: Db<Conn = PoolConnection<Sqlite>> + 'static {
     let mut db = state.db.conn().await?;
     // Decode as JSON...
-    let admin = body.into_inner();
-    let creator = db.get_user_by_token(admin.admin.as_ref()).await.map_err(|e| {
+    let body = body.into_inner();
+    let creator = db.get_user_by_token(body.admin.as_ref()).await.map_err(|e| {
         error!("get admin error: {:?}", e);
         errors::NtexResponseError::BadRequest("user id is invalidate".to_string())
     })?;
-    let role = admin.user.role.clone() as i32;
-    let token = admin.user.id;
+    let role = body.user.role.clone() as i32;
+    let token = body.user.token;
     if creator.role <= role {
         return Err(errors::NtexResponseError::BadRequest("no permission".to_string()))
     }
@@ -234,26 +232,25 @@ where T: Db<Conn = PoolConnection<Sqlite>> {
 pub async fn delete_user<T>(
     body: web::types::Json<DeleteUser>, state: web::types::State<Arc<State<T>>>
 ) -> Result<ResponseEntity, errors::NtexResponseError>
-    where T: Db<Conn = PoolConnection<Sqlite>> {
+    where T: Db<Conn = PoolConnection<Sqlite>> + 'static {
     let mut db = state.db.conn().await?;
     // Decode as JSON...
     let delete = body.into_inner();
-    let token = delete.id;
-/*    let creator = db.get_user_by_token(admin.admin.as_ref()).await.map_err(|e| {
-        error!("get admin error: {:?}", e);
-        errors::NtexResponseError::BadRequest("user id is invalidate".to_string())
-    })?;
-    let role = admin.user.role.clone() as i32;
-    let token = admin.user.id;
-    if creator.role <= role {
-        return Err(errors::NtexResponseError::BadRequest("no permission".to_string()))
-    }
-    if token.len() > USER_TOKEN_MAX_LEN {
-        return Err(errors::NtexResponseError::BadRequest("user id is invalidate".to_string()))
-    }*/
+    let token = delete.token;
+    /*    let creator = db.get_user_by_token(admin.admin.as_ref()).await.map_err(|e| {
+            error!("get admin error: {:?}", e);
+            errors::NtexResponseError::BadRequest("user id is invalidate".to_string())
+        })?;
+        let role = admin.user.role.clone() as i32;
+        let token = admin.user.id;
+        if creator.role <= role {
+            return Err(errors::NtexResponseError::BadRequest("no permission".to_string()))
+        }
+        if token.len() > USER_TOKEN_MAX_LEN {
+            return Err(errors::NtexResponseError::BadRequest("user id is invalidate".to_string()))
+        }*/
     db.delete_user(token.clone())
         .await
         .map_err(|_| errors::NtexResponseError::BadRequest("user is not exist".to_string()))?;
     return Ok(ResponseEntity::Status)
 }
-

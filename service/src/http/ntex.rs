@@ -51,7 +51,7 @@ pub async fn serve_acme_challenge(
                 web::resource("/ostrich/admin/mobile/user/create").route(web::post().to(handle_create_user)),
                 web::resource("/ostrich/api/mobile/server/list").route(web::post().to(handle_server_query)),
                 web::resource("/ostrich/api/mobile/servers/list").route(web::post().to(handle_servers_query)),
-                web::resource("/ostrich/api/server/update").app_state(web::types::JsonConfig::default().limit(4096)).route(web::post().to(handle_server_update)),
+                web::resource("/ostrich/api/server/update").state(web::types::JsonConfig::default().limit(4096)).route(web::post().to(handle_server_update)),
                 fs::Files::new("/", "/etc/ostrich/html/").index_file("index.html"),
             )
             )

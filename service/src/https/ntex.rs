@@ -37,7 +37,7 @@ pub async fn serve_register(
             .state(state.clone())
             .service(web::resource("/ostrich/admin/mobile/user/create").route(web::post().to(handle_create_user)))
             .service(web::resource("/ostrich/api/mobile/server/list").route(web::post().to(handle_server_query)))
-            .service(web::resource("/ostrich/api/server/update").app_state(web::types::JsonConfig::default().limit(4096)).route(web::post().to(handle_server_update)))
+            .service(web::resource("/ostrich/api/server/update").state(web::types::JsonConfig::default().limit(4096)).route(web::post().to(handle_server_update)))
             // with path parameters
             .service(web::resource("/").route(web::get().to(index)))
     })
